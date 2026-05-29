@@ -13,15 +13,33 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    protected $table = 'Users';
+
+    protected $primaryKey = 'Id';
+
+    public const CREATED_AT = 'CreatedAt';
+
+    public const UPDATED_AT = 'UpdatedAt';
+
     /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
+        'Email',
+        'DisplayName',
+        'Role',
+        'Region',
+        'Type',
+        'KioskName',
+        'CompanyName',
+        'TransportirName',
+        'PoliceNumber',
+        'Phone',
+        'Address',
+        'PicName',
+        'LicenseImageName',
     ];
 
     /**
@@ -30,7 +48,10 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $hidden = [
-        'password',
+        'PasswordHash',
+        'PasswordSalt',
+        'ResetOtpHash',
+        'ResetOtpSalt',
         'remember_token',
     ];
 
@@ -42,8 +63,23 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'CreatedAt' => 'datetime',
+            'UpdatedAt' => 'datetime',
+            'ResetOtpExpiresAt' => 'datetime',
+            'ResetOtpVerifiedAt' => 'datetime',
+            'LastFailedLoginAt' => 'datetime',
+            'LockoutUntil' => 'datetime',
+            'FailedLoginCount' => 'integer',
         ];
+    }
+
+    public function getAuthIdentifierName(): string
+    {
+        return 'Id';
+    }
+
+    public function getAuthPassword(): string
+    {
+        return (string) ($this->attributes['PasswordHash'] ?? '');
     }
 }
