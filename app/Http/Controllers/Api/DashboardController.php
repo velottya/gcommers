@@ -25,49 +25,65 @@ class DashboardController extends Controller
     private function superAdminStats(): array
     {
         return [
-            'totalOrders'          => Order::count(),
-            'totalProducts'        => Product::count(),
-            'totalAdminUsers'      => User::whereIn('Role', User::adminRoleDatabaseValues())->count(),
-            'unreadNotifications'  => SystemNotification::where('isRead', false)->count(),
-            'recentOrders'         => Order::orderBy('createdAt', 'desc')->limit(5)->get(),
+            'totalOrders'         => Order::count(),
+            'totalProducts'       => Product::count(),
+            'totalAdminUsers'     => User::whereIn('Role', User::ADMIN_ROLES)->count(),
+            'unreadNotifications' => SystemNotification::where('isRead', false)->count(),
+            'recentOrders'        => $this->formatOrders(
+                Order::orderBy('CreatedAt', 'desc')->limit(5)->get()
+            ),
         ];
     }
 
     private function adminRegionStats($user): array
     {
-        // Filter order berdasarkan vendor = Region admin.
-        // Sesuaikan jika mapping region-vendor berbeda di database.
-        $regionFilter = $user->Region;
+        $region = trim($user->Region ?? '');
+
+        $baseQuery = $region ? Order::where('Vendor', $region) : Order::query();
 
         return [
-            'totalOrders'         => $regionFilter
-                ? Order::where('vendor', $regionFilter)->count()
-                : Order::count(),
+            'totalOrders'         => (clone $baseQuery)->count(),
             'totalProducts'       => Product::count(),
-            'unreadNotifications' => SystemNotification::where('userEmail', $user->Email)->where('isRead', false)->count(),
-            'recentOrders'        => ($regionFilter
-                ? Order::where('vendor', $regionFilter)
-                : Order::query()
-            )->orderBy('createdAt', 'desc')->limit(5)->get(),
+            'unreadNotifications' => SystemNotification::where('UserEmail', $user->Email)
+                                        ->where('isRead', false)->count(),
+            'recentOrders'        => $this->formatOrders(
+                (clone $baseQuery)->orderBy('CreatedAt', 'desc')->limit(5)->get()
+            ),
         ];
     }
 
     private function adminTransportStats($user): array
     {
-        $company = $user->CompanyName;
+        $company = trim($user->CompanyName ?? '');
+
+        $baseQuery = $company ? Order::where('Vendor', $company) : Order::query();
 
         return [
             'assignedOrders'      => $company
-                ? Order::where('vendor', $company)->whereIn('status', ['processing', 'shipped', 'on_delivery'])->count()
+                ? Order::where('Vendor', $company)
+                    ->whereIn('Status', ['processing', 'shipped', 'on_delivery'])->count()
                 : 0,
             'deliveredOrders'     => $company
-                ? Order::where('vendor', $company)->where('status', 'delivered')->count()
+                ? Order::where('Vendor', $company)->where('Status', 'delivered')->count()
                 : 0,
-            'unreadNotifications' => SystemNotification::where('userEmail', $user->Email)->where('isRead', false)->count(),
-            'recentOrders'        => ($company
-                ? Order::where('vendor', $company)
-                : Order::query()
-            )->orderBy('createdAt', 'desc')->limit(5)->get(),
+            'unreadNotifications' => SystemNotification::where('UserEmail', $user->Email)
+                                        ->where('isRead', false)->count(),
+            'recentOrders'        => $this->formatOrders(
+                (clone $baseQuery)->orderBy('CreatedAt', 'desc')->limit(5)->get()
+            ),
         ];
+    }
+
+    private function formatOrders($orders): array
+    {
+        return $orders->map(fn (Order $o) => [
+            'id'            => $o->Id,
+            'poNumber'      => $o->PoNumber,
+            'userEmail'     => $o->UserEmail,
+            'status'        => $o->Status,
+            'vendor'        => $o->Vendor,
+            'totalAmount'   => $o->TotalAmount,
+            'createdAt'     => $o->CreatedAt,
+        ])->all();
     }
 }

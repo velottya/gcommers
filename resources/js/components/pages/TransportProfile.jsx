@@ -21,7 +21,6 @@ export default function TransportProfile({ user }) {
                     <InfoRow label="Nama"       value={user.displayName} />
                     <InfoRow label="Email"      value={user.email} />
                     <InfoRow label="Role"       value={user.role} />
-                    <InfoRow label="Nama PIC"   value={user.picName} />
                 </dl>
             </div>
 
@@ -30,8 +29,6 @@ export default function TransportProfile({ user }) {
                 <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-sky-400/70">Informasi Perusahaan</h2>
                 <dl>
                     <InfoRow label="Perusahaan"     value={user.companyName} />
-                    <InfoRow label="Nama Transportir" value={user.transportirName} />
-                    <InfoRow label="No. Polisi"     value={user.policeNumber} />
                 </dl>
             </div>
 

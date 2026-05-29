@@ -14,50 +14,83 @@ class OrderController extends Controller
         $user  = Auth::user();
         $query = Order::query();
 
-        // Scope berdasarkan role
         if ($user->Role === 'AdminRegion' && $user->Region) {
-            $query->where('vendor', $user->Region);
+            $query->where('Vendor', trim($user->Region));
         } elseif ($user->Role === 'AdminTransport' && $user->CompanyName) {
-            $query->where('vendor', $user->CompanyName);
+            $query->where('Vendor', trim($user->CompanyName));
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('Status', $request->status);
         }
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('poNumber', 'like', "%{$search}%")
-                  ->orWhere('userEmail', 'like', "%{$search}%");
+                $q->where('PoNumber', 'like', "%{$search}%")
+                  ->orWhere('UserEmail', 'like', "%{$search}%");
             });
         }
 
-        $orders = $query->orderBy('createdAt', 'desc')->paginate(20);
+        $orders = $query->orderBy('CreatedAt', 'desc')->paginate(20);
 
-        return response()->json($orders);
+        return response()->json(
+            $orders->through(fn (Order $o) => $this->format($o))
+        );
     }
 
-    public function show($id)
+    public function show(string $id)
     {
         $user  = Auth::user();
         $order = Order::findOrFail($id);
 
-        if ($user->Role === 'AdminRegion' && $user->Region && $order->vendor !== $user->Region) {
+        if ($user->Role === 'AdminRegion' && $user->Region &&
+            trim($order->Vendor) !== trim($user->Region)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        if ($user->Role === 'AdminTransport' && $user->CompanyName && $order->vendor !== $user->CompanyName) {
+        if ($user->Role === 'AdminTransport' && $user->CompanyName &&
+            trim($order->Vendor) !== trim($user->CompanyName)) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        // Load relasi jika tabel tersedia; jika kolom FK berbeda, items/events akan kosong
         try {
             $order->load(['items', 'events']);
         } catch (\Throwable) {
-            // Abaikan jika relasi tidak bisa di-load karena schema berbeda
+            // Abaikan jika relasi belum bisa di-load
         }
 
-        return response()->json($order);
+        return response()->json($this->format($order, withRelations: true));
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private function format(Order $o, bool $withRelations = false): array
+    {
+        $data = [
+            'id'             => $o->Id,
+            'poNumber'       => $o->PoNumber,
+            'userEmail'      => $o->UserEmail,
+            'status'         => $o->Status,
+            'vendor'         => $o->Vendor,
+            'paymentMethod'  => $o->PaymentMethod,
+            'subTotal'       => $o->Subtotal,
+            'taxAmount'      => $o->TaxAmount,
+            'shippingAmount' => $o->ShippingAmount,
+            'totalAmount'    => $o->TotalAmount,
+            'createdAt'      => $o->CreatedAt,
+            'updatedAt'      => $o->UpdatedAt,
+            'paidAt'         => $o->PaidAt,
+            'deliveredAt'    => $o->DeliveredAt,
+            'virtualAccount' => $o->VirtualAccount,
+            'vaExpiredAt'    => $o->VaExpiredAt,
+        ];
+
+        if ($withRelations) {
+            $data['items']  = $o->relationLoaded('items')  ? $o->items  : [];
+            $data['events'] = $o->relationLoaded('events') ? $o->events : [];
+        }
+
+        return $data;
     }
 }
