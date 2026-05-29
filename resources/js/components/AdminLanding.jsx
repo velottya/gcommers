@@ -74,11 +74,6 @@ export default function AdminLanding({ adminRole = null, pageContext = 'landing'
                         <p className="text-xs uppercase tracking-[0.32em] text-slate-400">Gcommers Admin Console</p>
                         <h1 className="mt-1 text-lg font-semibold text-white">{activeRole ? activeRole.title : 'Role-based admin portal'}</h1>
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
-                        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-200">Laravel + React</span>
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Shared SQL Server</span>
-                        {activeRole ? <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">{activeRole.label}</span> : null}
-                    </div>
                 </header>
 
                 <div className="grid flex-1 gap-6 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:py-8">
