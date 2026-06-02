@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AppUserController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
@@ -33,6 +34,14 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/notifications',              [NotificationController::class, 'index']);
     Route::patch('/notifications/read-all',   [NotificationController::class, 'markAllRead']);
     Route::patch('/notifications/{id}/read',  [NotificationController::class, 'markRead']);
+
+    // App users (Flutter non-admin users) — SuperAdmin only
+    Route::get('/app-users/kiosk',            [AppUserController::class, 'kiosk']);
+    Route::post('/app-users/kiosk',           [AppUserController::class, 'storeKiosk']);
+    Route::get('/app-users/transportir',      [AppUserController::class, 'transportir']);
+    Route::post('/app-users/transportir',     [AppUserController::class, 'storeTransportir']);
+    Route::put('/app-users/{id}',             [AppUserController::class, 'update']);
+    Route::delete('/app-users/{id}',          [AppUserController::class, 'destroy']);
 });
 
 // ─── SPA shell (catch-all — harus paling bawah) ──────────────────────────────

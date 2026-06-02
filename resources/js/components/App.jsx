@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './layout/Layout';
+import AppUserList from './pages/AppUserList';
 import Dashboard from './pages/Dashboard';
 import NotificationList from './pages/NotificationList';
 import OrderDetail from './pages/OrderDetail';
@@ -40,6 +41,10 @@ export default function App({ user }) {
 
                     {role === 'AdminTransport' && (
                         <Route path="/profile" element={<TransportProfile user={user} />} />
+                    )}
+
+                    {(role === 'SuperAdmin' || role === 'AdminRegion' || role === 'AdminTransport') && (
+                        <Route path="/app-users" element={<AppUserList user={user} />} />
                     )}
 
                     {role === 'SuperAdmin' && (

@@ -25,7 +25,9 @@ class UserController extends Controller
     {
         $currentUser = Auth::user();
 
-        $query = User::whereIn('Role', User::adminRoleDatabaseValues());
+        // Exclude transportir (AdminTransport+Type=Truk) — dikelola di AppUserController
+        $query = User::whereIn('Role', User::adminRoleDatabaseValues())
+            ->where(fn ($q) => $q->whereNull('Type')->orWhere('Type', '!=', 'Truk'));
 
         // AdminRegion hanya melihat user di region-nya
         if ($currentUser->Role === 'AdminRegion' && $currentUser->Region) {
