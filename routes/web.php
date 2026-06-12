@@ -2,9 +2,14 @@
 
 use App\Http\Controllers\Api\AppUserController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DriverAssignmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\OrderCostAllocationController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\SubsidyQuotaController;
+use App\Http\Controllers\Api\TransportBillingController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
@@ -20,10 +25,17 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/dashboard/stats',            [DashboardController::class, 'stats']);
 
     Route::get('/orders',                     [OrderController::class, 'index']);
+    Route::get('/orders/recap',               [OrderController::class, 'recap']);
+    Route::get('/orders/{id}/bptp',           [OrderController::class, 'downloadBptp']);
     Route::get('/orders/{id}',                [OrderController::class, 'show']);
 
-    Route::get('/products',                   [ProductController::class, 'index']);
+    // Literal routes sebelum wildcard {id}
     Route::get('/products/categories',        [ProductController::class, 'categories']);
+    Route::get('/products',                   [ProductController::class, 'index']);
+    Route::post('/products',                  [ProductController::class, 'store']);
+    Route::get('/products/{id}',              [ProductController::class, 'show'])->whereNumber('id');
+    Route::put('/products/{id}',              [ProductController::class, 'update'])->whereNumber('id');
+    Route::delete('/products/{id}',           [ProductController::class, 'destroy'])->whereNumber('id');
 
     Route::get('/users',                      [UserController::class, 'index']);
     Route::post('/users',                     [UserController::class, 'store']);
@@ -35,13 +47,50 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::patch('/notifications/read-all',   [NotificationController::class, 'markAllRead']);
     Route::patch('/notifications/{id}/read',  [NotificationController::class, 'markRead']);
 
-    // App users (Flutter non-admin users) — SuperAdmin only
+    // App users (Flutter non-admin users)
     Route::get('/app-users/kiosk',            [AppUserController::class, 'kiosk']);
     Route::post('/app-users/kiosk',           [AppUserController::class, 'storeKiosk']);
     Route::get('/app-users/transportir',      [AppUserController::class, 'transportir']);
     Route::post('/app-users/transportir',     [AppUserController::class, 'storeTransportir']);
     Route::put('/app-users/{id}',             [AppUserController::class, 'update']);
     Route::delete('/app-users/{id}',          [AppUserController::class, 'destroy']);
+
+    // Fee & system settings (SuperAdmin only, controller enforces)
+    Route::get('/settings/fees',              [SettingController::class, 'index']);
+    Route::put('/settings/fees',              [SettingController::class, 'update']);
+
+    // Fee defaults — reference for AdminRegion when filling allocations
+    Route::get('/settings/fees-view',         [SettingController::class, 'view']);
+
+    // Alokasi Biaya per Pesanan (AdminRegion → submit → SuperAdmin approve)
+    Route::get('/order-cost-allocations',                    [OrderCostAllocationController::class, 'index']);
+    Route::get('/order-cost-allocations/defaults',           [OrderCostAllocationController::class, 'defaults']);
+    Route::post('/order-cost-allocations',                   [OrderCostAllocationController::class, 'storeOrUpdate']);
+    Route::post('/order-cost-allocations/{id}/submit',       [OrderCostAllocationController::class, 'submit']);
+    Route::post('/order-cost-allocations/{id}/approve',      [OrderCostAllocationController::class, 'approve']);
+    Route::post('/order-cost-allocations/{id}/reject',       [OrderCostAllocationController::class, 'reject']);
+
+    // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
+    Route::get('/quota-subsidi',              [SubsidyQuotaController::class, 'index']);
+    Route::post('/quota-subsidi',             [SubsidyQuotaController::class, 'store']);
+    Route::put('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'update']);
+    Route::delete('/quota-subsidi/{id}',      [SubsidyQuotaController::class, 'destroy']);
+    Route::post('/quota-subsidi/{id}/submit', [SubsidyQuotaController::class, 'submit']);
+    Route::post('/quota-subsidi/{id}/approve',[SubsidyQuotaController::class, 'approve']);
+    Route::post('/quota-subsidi/{id}/reject', [SubsidyQuotaController::class, 'reject']);
+
+    // Alokasi Sopir / Driver Assignment (AdminTransport)
+    Route::get('/driver-assignments',         [DriverAssignmentController::class, 'index']);
+    Route::post('/driver-assignments',        [DriverAssignmentController::class, 'store']);
+    Route::delete('/driver-assignments/{id}', [DriverAssignmentController::class, 'destroy']);
+
+    // Rekap & Tagihan Transport (AdminTransport + SuperAdmin)
+    Route::get('/transport-billings',                    [TransportBillingController::class, 'index']);
+    Route::get('/transport-billings/preview',            [TransportBillingController::class, 'preview']);
+    Route::post('/transport-billings',                   [TransportBillingController::class, 'store']);
+    Route::post('/transport-billings/{id}/submit',       [TransportBillingController::class, 'submit']);
+    Route::post('/transport-billings/{id}/approve',      [TransportBillingController::class, 'approve']);
+    Route::post('/transport-billings/{id}/reject',       [TransportBillingController::class, 'reject']);
 });
 
 // ─── SPA shell (catch-all — harus paling bawah) ──────────────────────────────

@@ -1,12 +1,19 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './layout/Layout';
+import AlokasiOrderBiaya from './pages/AlokasiOrderBiaya';
+import AlokasiSopir from './pages/AlokasiSopir';
 import AppUserList from './pages/AppUserList';
 import Dashboard from './pages/Dashboard';
 import NotificationList from './pages/NotificationList';
 import OrderDetail from './pages/OrderDetail';
 import OrderList from './pages/OrderList';
+import Persetujuan from './pages/Persetujuan';
+import PesananRekap from './pages/PesananRekap';
+import ProductDetail from './pages/ProductDetail';
 import ProductList from './pages/ProductList';
+import QuotaSubsidi from './pages/QuotaSubsidi';
+import RekapTagihan from './pages/RekapTagihan';
 import SystemSettings from './pages/SystemSettings';
 import TransportProfile from './pages/TransportProfile';
 import UserList from './pages/UserList';
@@ -30,7 +37,10 @@ export default function App({ user }) {
                     <Route path="/orders/:id" element={<OrderDetail user={user} />} />
 
                     {role !== 'AdminTransport' && (
-                        <Route path="/products" element={<ProductList />} />
+                        <Route path="/products" element={<ProductList user={user} />} />
+                    )}
+                    {role !== 'AdminTransport' && (
+                        <Route path="/products/:id" element={<ProductDetail />} />
                     )}
 
                     {role !== 'AdminTransport' && (
@@ -47,8 +57,33 @@ export default function App({ user }) {
                         <Route path="/app-users" element={<AppUserList user={user} />} />
                     )}
 
+                    {/* ─── SuperAdmin only ─── */}
                     {role === 'SuperAdmin' && (
-                        <Route path="/settings" element={<SystemSettings user={user} />} />
+                        <Route path="/settings"       element={<SystemSettings user={user} />} />
+                    )}
+                    {role === 'SuperAdmin' && (
+                        <Route path="/pesanan-rekap"  element={<PesananRekap />} />
+                    )}
+                    {role === 'SuperAdmin' && (
+                        <Route path="/persetujuan"    element={<Persetujuan />} />
+                    )}
+
+                    {/* ─── SuperAdmin + AdminRegion ─── */}
+                    {(role === 'SuperAdmin' || role === 'AdminRegion') && (
+                        <Route path="/quota-subsidi"  element={<QuotaSubsidi user={user} />} />
+                    )}
+
+                    {/* ─── AdminRegion only ─── */}
+                    {role === 'AdminRegion' && (
+                        <Route path="/alokasi-biaya"  element={<AlokasiOrderBiaya user={user} />} />
+                    )}
+
+                    {/* ─── AdminTransport only ─── */}
+                    {role === 'AdminTransport' && (
+                        <Route path="/alokasi-sopir"  element={<AlokasiSopir user={user} />} />
+                    )}
+                    {role === 'AdminTransport' && (
+                        <Route path="/rekap-tagihan"  element={<RekapTagihan user={user} />} />
                     )}
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />

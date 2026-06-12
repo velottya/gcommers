@@ -8,6 +8,17 @@ function formatDate(val) {
     return new Date(val).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function normalizeNotification(notif) {
+    return {
+        id: notif.id ?? notif.Id,
+        title: notif.title ?? notif.Title ?? '',
+        description: notif.description ?? notif.Description ?? '',
+        userEmail: notif.userEmail ?? notif.UserEmail ?? '',
+        createdAt: notif.createdAt ?? notif.CreatedAt ?? null,
+        isRead: Boolean(notif.isRead ?? notif.IsRead),
+    };
+}
+
 export default function NotificationList({ user }) {
     const [data,       setData]       = useState(null);
     const [loading,    setLoading]    = useState(true);
@@ -30,7 +41,10 @@ export default function NotificationList({ user }) {
         await api.patch(`/notifications/${id}/read`);
         setData(prev => ({
             ...prev,
-            data: prev.data.map(n => n.id === id ? { ...n, isRead: true } : n),
+            data: prev.data.map(n => {
+                const normalized = normalizeNotification(n);
+                return String(normalized.id) === String(id) ? { ...n, isRead: true, IsRead: true } : n;
+            }),
         }));
     }
 
@@ -44,7 +58,8 @@ export default function NotificationList({ user }) {
         }
     }
 
-    const unreadCount = data?.data?.filter(n => !n.isRead).length ?? 0;
+    const notifications = (data?.data ?? []).map(normalizeNotification);
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     return (
         <div className="space-y-6">
@@ -83,14 +98,14 @@ export default function NotificationList({ user }) {
                         <div key={i} className="h-16 animate-pulse rounded-2xl bg-white/5" />
                     ))}
                 </div>
-            ) : !data?.data?.length ? (
+            ) : !notifications.length ? (
                 <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-white/8 py-16 text-slate-500">
                     <Bell size={32} strokeWidth={1} />
                     <p className="text-sm">Tidak ada notifikasi.</p>
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {data.data.map(notif => (
+                    {notifications.map(notif => (
                         <div
                             key={notif.id}
                             className={`rounded-2xl border p-4 transition
@@ -102,10 +117,10 @@ export default function NotificationList({ user }) {
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1 min-w-0">
                                     <p className={`text-sm font-medium ${notif.isRead ? 'text-slate-300' : 'text-white'}`}>
-                                        {notif.Title}
+                                        {notif.title}
                                     </p>
-                                    {notif.Description && (
-                                        <p className="mt-1 text-xs text-slate-400 leading-5">{notif.Description}</p>
+                                    {notif.description && (
+                                        <p className="mt-1 text-xs text-slate-400 leading-5">{notif.description}</p>
                                     )}
                                     <p className="mt-2 text-xs text-slate-600">
                                         {notif.userEmail} · {formatDate(notif.createdAt)}

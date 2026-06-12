@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import React from 'react';
 
-export function Table({ columns, data, loading, emptyMessage = 'Tidak ada data.' }) {
+export function Table({ columns, data, loading, emptyMessage = 'Tidak ada data.', rowProps }) {
     if (loading) {
         return (
             <div className="space-y-2">
@@ -37,7 +37,11 @@ export function Table({ columns, data, loading, emptyMessage = 'Tidak ada data.'
                 </thead>
                 <tbody className="divide-y divide-white/5">
                     {data.map((row, i) => (
-                        <tr key={row.id ?? i} className="hover:bg-white/3 transition">
+                        <tr
+                            key={row.id ?? i}
+                            {...(typeof rowProps === 'function' ? rowProps(row, i) : rowProps)}
+                            className={`hover:bg-white/3 transition ${(typeof rowProps === 'function' ? rowProps(row, i) : rowProps)?.className ?? ''}`}
+                        >
                             {columns.map(col => (
                                 <td key={col.key} className="px-4 py-3 text-slate-200">
                                     {col.render ? col.render(row) : (row[col.key] ?? '—')}

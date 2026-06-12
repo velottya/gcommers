@@ -37,15 +37,18 @@ class DashboardController extends Controller
 
     private function adminRegionStats($user): array
     {
-        $region = trim($user->Region ?? '');
-
-        $baseQuery = $region ? Order::where('Vendor', $region) : Order::query();
+        $baseQuery = $this->adminRegionOrders($user);
+        $unreadNotifications = SystemNotification::where('isRead', false)
+            ->when(
+                SystemNotification::where('UserEmail', $user->Email)->exists(),
+                fn ($query) => $query->where('UserEmail', $user->Email)
+            )
+            ->count();
 
         return [
             'totalOrders'         => (clone $baseQuery)->count(),
             'totalProducts'       => Product::count(),
-            'unreadNotifications' => SystemNotification::where('UserEmail', $user->Email)
-                                        ->where('isRead', false)->count(),
+            'unreadNotifications' => $unreadNotifications,
             'recentOrders'        => $this->formatOrders(
                 (clone $baseQuery)->orderBy('CreatedAt', 'desc')->limit(5)->get()
             ),
@@ -57,6 +60,12 @@ class DashboardController extends Controller
         $company = trim($user->CompanyName ?? '');
 
         $baseQuery = $company ? Order::where('Vendor', $company) : Order::query();
+        $unreadNotifications = SystemNotification::where('isRead', false)
+            ->when(
+                SystemNotification::where('UserEmail', $user->Email)->exists(),
+                fn ($query) => $query->where('UserEmail', $user->Email)
+            )
+            ->count();
 
         return [
             'assignedOrders'      => $company
@@ -66,8 +75,7 @@ class DashboardController extends Controller
             'deliveredOrders'     => $company
                 ? Order::where('Vendor', $company)->where('Status', 'delivered')->count()
                 : 0,
-            'unreadNotifications' => SystemNotification::where('UserEmail', $user->Email)
-                                        ->where('isRead', false)->count(),
+            'unreadNotifications' => $unreadNotifications,
             'recentOrders'        => $this->formatOrders(
                 (clone $baseQuery)->orderBy('CreatedAt', 'desc')->limit(5)->get()
             ),
@@ -85,5 +93,22 @@ class DashboardController extends Controller
             'totalAmount'   => $o->TotalAmount,
             'createdAt'     => $o->CreatedAt,
         ])->all();
+    }
+
+    private function adminRegionOrders($user)
+    {
+        $region = trim($user->Region ?? '');
+
+        if (! $region) {
+            return Order::query();
+        }
+
+        $scopedQuery = Order::where('Vendor', $region);
+
+        if ($scopedQuery->exists()) {
+            return $scopedQuery;
+        }
+
+        return Order::query();
     }
 }

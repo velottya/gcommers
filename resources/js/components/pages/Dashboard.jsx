@@ -15,6 +15,10 @@ function formatDate(val) {
     return new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function orderField(order, camelKey, pascalKey) {
+    return order?.[camelKey] ?? order?.[pascalKey] ?? null;
+}
+
 const ROLE_CONFIG = {
     SuperAdmin: {
         stats: (d) => [
@@ -121,12 +125,12 @@ export default function Dashboard({ user }) {
                                         className="cursor-pointer hover:bg-white/3 transition"
                                         onClick={() => navigate(`/orders/${order.id}`)}
                                     >
-                                        <td className="py-2.5 pr-4 font-mono text-xs text-slate-200">{order.poNumber}</td>
-                                        <td className="py-2.5 pr-4 text-slate-300 max-w-[160px] truncate">{order.userEmail}</td>
-                                        <td className="py-2.5 pr-4 text-slate-300">{order.vendor || '—'}</td>
-                                        <td className="py-2.5 pr-4 text-slate-200">{formatRupiah(order.totalAmount)}</td>
-                                        <td className="py-2.5 pr-4"><StatusBadge value={order.status} /></td>
-                                        <td className="py-2.5 text-slate-400">{formatDate(order.createdAt)}</td>
+                                        <td className="py-2.5 pr-4 font-mono text-xs text-slate-200">{orderField(order, 'poNumber', 'PoNumber')}</td>
+                                        <td className="py-2.5 pr-4 text-slate-300 max-w-[160px] truncate">{orderField(order, 'userEmail', 'UserEmail')}</td>
+                                        <td className="py-2.5 pr-4 text-slate-300">{orderField(order, 'vendor', 'Vendor') || '—'}</td>
+                                        <td className="py-2.5 pr-4 text-slate-200">{formatRupiah(orderField(order, 'totalAmount', 'TotalAmount'))}</td>
+                                        <td className="py-2.5 pr-4"><StatusBadge value={orderField(order, 'status', 'Status')} /></td>
+                                        <td className="py-2.5 text-slate-400">{formatDate(orderField(order, 'createdAt', 'CreatedAt'))}</td>
                                     </tr>
                                 ))}
                             </tbody>

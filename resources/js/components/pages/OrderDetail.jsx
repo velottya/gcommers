@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
@@ -29,6 +29,8 @@ export default function OrderDetail({ user }) {
     const [order,   setOrder]       = useState(null);
     const [loading, setLoading]     = useState(true);
     const [error,   setError]       = useState(null);
+
+    const canDownloadBptp = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
 
     useEffect(() => {
         api.get(`/orders/${id}`)
@@ -68,6 +70,18 @@ export default function OrderDetail({ user }) {
                     <p className="mt-0.5 font-mono text-sm text-slate-400">{order?.poNumber}</p>
                 </div>
                 <StatusBadge value={order?.status} />
+
+                {canDownloadBptp && order && (
+                    <a
+                        href={`/api/admin/orders/${order.id}/bptp`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-auto flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-400/20 transition"
+                    >
+                        <Download size={15} />
+                        Unduh BPTP
+                    </a>
+                )}
             </div>
 
             {/* Order header */}
@@ -119,8 +133,8 @@ export default function OrderDetail({ user }) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {order.items.map(item => (
-                                    <tr key={item.id}>
+                                {order.items.map((item, index) => (
+                                    <tr key={item.id ?? `${item.productCode ?? item.productName ?? 'item'}-${index}`}>
                                         <td className="py-2.5 pr-4 text-slate-200">{item.productName || item.productCode || '—'}</td>
                                         <td className="py-2.5 pr-4 text-slate-300">{item.quantity}</td>
                                         <td className="py-2.5 pr-4 text-slate-300">{formatRupiah(item.price)}</td>
@@ -138,8 +152,8 @@ export default function OrderDetail({ user }) {
                 <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
                     <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Riwayat Event</h2>
                     <div className="space-y-3">
-                        {order.events.map(ev => (
-                            <div key={ev.id} className="flex gap-4">
+                        {order.events.map((ev, index) => (
+                            <div key={ev.id ?? `${ev.event ?? 'event'}-${index}`} className="flex gap-4">
                                 <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
                                 <div>
                                     <p className="text-sm font-medium text-slate-200">{ev.event}</p>

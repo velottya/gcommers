@@ -15,15 +15,19 @@ function formatDate(val) {
     return new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function orderField(order, camelKey, pascalKey) {
+    return order?.[camelKey] ?? order?.[pascalKey] ?? null;
+}
+
 const STATUS_OPTIONS = ['', 'pending', 'processing', 'on_delivery', 'delivered', 'cancelled'];
 
 const COLUMNS = (navigate) => [
-    { key: 'poNumber',    label: 'PO Number',  render: r => <span className="font-mono text-xs">{r.poNumber}</span> },
-    { key: 'userEmail',   label: 'Email' },
-    { key: 'vendor',      label: 'Vendor' },
-    { key: 'totalAmount', label: 'Total',  render: r => formatRupiah(r.totalAmount) },
-    { key: 'status',      label: 'Status', render: r => <StatusBadge value={r.status} /> },
-    { key: 'createdAt',   label: 'Tanggal', render: r => formatDate(r.createdAt) },
+    { key: 'poNumber',    label: 'PO Number',  render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
+    { key: 'userEmail',   label: 'Email',      render: r => orderField(r, 'userEmail', 'UserEmail') },
+    { key: 'vendor',      label: 'Vendor',     render: r => orderField(r, 'vendor', 'Vendor') },
+    { key: 'totalAmount', label: 'Total',      render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
+    { key: 'status',      label: 'Status',     render: r => <StatusBadge value={orderField(r, 'status', 'Status')} /> },
+    { key: 'createdAt',   label: 'Tanggal',    render: r => formatDate(orderField(r, 'createdAt', 'CreatedAt')) },
     {
         key: '_action',
         label: '',
@@ -65,6 +69,10 @@ export default function OrderList({ user }) {
     }
 
     const pageTitle = user.role === 'AdminTransport' ? 'Assigned Orders' : 'Daftar Order';
+
+    function openDetail(orderId) {
+        navigate(`/orders/${orderId}`);
+    }
 
     return (
         <div className="space-y-6">
@@ -110,6 +118,10 @@ export default function OrderList({ user }) {
                 data={data?.data}
                 loading={loading}
                 emptyMessage="Tidak ada order ditemukan."
+                rowProps={(row) => ({
+                    onClick: () => openDetail(row.id),
+                    className: 'cursor-pointer hover:bg-white/3 transition',
+                })}
             />
 
             <Pagination meta={data} onPageChange={setPage} />
