@@ -32,6 +32,17 @@ function Inp({ error, ...props }) {
     );
 }
 
+// ─── constants ───────────────────────────────────────────────────────────────
+
+const VALID_REGIONS = [
+    'Jawa Timur',
+    'Jawa Tengah Selatan',
+    'Jawa Tengah Utara',
+    'Makassar',
+    'Medan',
+    'Lampung',
+];
+
 // ─── Kiosk modal ─────────────────────────────────────────────────────────────
 
 const KIOSK_EMPTY = {
@@ -109,11 +120,23 @@ function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
                                     placeholder="Kiosk Makmur" error={errors.KioskName?.[0]} />
                             </Field>
                             <Field label="Region" error={errors.Region?.[0]}>
-                                <Inp type="text" value={form.Region} onChange={set('Region')}
-                                    placeholder="Jawa Timur" error={errors.Region?.[0]}
-                                    disabled={Boolean(lockedRegion)} />
-                                {lockedRegion && (
-                                    <p className="mt-1 text-xs text-slate-600">Region dikunci sesuai wilayah Anda.</p>
+                                {lockedRegion ? (
+                                    <>
+                                        <Inp type="text" value={lockedRegion} disabled />
+                                        <p className="mt-1 text-xs text-slate-600">Region dikunci sesuai wilayah Anda.</p>
+                                    </>
+                                ) : (
+                                    <select
+                                        value={form.Region}
+                                        onChange={set('Region')}
+                                        className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-white outline-none transition
+                                            ${errors.Region?.[0] ? 'border-red-400/60' : 'border-white/10 focus:border-amber-400/40'}`}
+                                    >
+                                        <option value="">-- Pilih Region --</option>
+                                        {VALID_REGIONS.map(r => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
                                 )}
                             </Field>
                         </div>

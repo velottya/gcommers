@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\OrderCostAllocationController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
@@ -36,6 +37,13 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/products/{id}',              [ProductController::class, 'show'])->whereNumber('id');
     Route::put('/products/{id}',              [ProductController::class, 'update'])->whereNumber('id');
     Route::delete('/products/{id}',           [ProductController::class, 'destroy'])->whereNumber('id');
+
+    // Ajuan Penambahan Stok (AdminRegion submit → SuperAdmin approve/reject)
+    Route::get('/product-stock-requests',                         [ProductStockRequestController::class, 'index']);
+    Route::post('/product-stock-requests',                        [ProductStockRequestController::class, 'store']);
+    Route::post('/product-stock-requests/{id}/approve',           [ProductStockRequestController::class, 'approve']);
+    Route::post('/product-stock-requests/{id}/reject',            [ProductStockRequestController::class, 'reject']);
+    Route::get('/product-stock-requests/price/{productId}',       [ProductStockRequestController::class, 'currentPrice']);
 
     Route::get('/users',                      [UserController::class, 'index']);
     Route::post('/users',                     [UserController::class, 'store']);

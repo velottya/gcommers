@@ -133,7 +133,10 @@ class UserController extends Controller
             'DisplayName' => ['required', 'string', 'max:255'],
             'Role' => ['required', Rule::in(User::ADMIN_ROLES)],
             'Phone' => ['nullable', 'string', 'max:50'],
-            'Region' => ['nullable', 'string', 'max:255'],
+            'Region' => [
+                'nullable',
+                Rule::in(array_merge([''], User::VALID_REGIONS)),
+            ],
             'CompanyName' => ['nullable', 'string', 'max:255'],
             'TransportirName' => ['nullable', 'string', 'max:255'],
             'PoliceNumber' => ['nullable', 'string', 'max:100'],

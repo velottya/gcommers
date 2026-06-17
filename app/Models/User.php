@@ -19,6 +19,15 @@ class User extends Authenticatable
         'AdminTransport',
     ];
 
+    public const VALID_REGIONS = [
+        'Jawa Timur',
+        'Jawa Tengah Selatan',
+        'Jawa Tengah Utara',
+        'Makassar',
+        'Medan',
+        'Lampung',
+    ];
+
     public const ADMIN_ROLE_STORAGE_MAP = [
         'SuperAdmin' => 'superadmin',
         'AdminRegion' => 'admin',

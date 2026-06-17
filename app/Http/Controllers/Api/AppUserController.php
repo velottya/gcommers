@@ -91,7 +91,7 @@ class AppUserController extends Controller
             'Phone'       => 'nullable|string|max:50',
             'Address'     => 'nullable|string|max:500',
             'KioskName'   => 'nullable|string|max:200',
-            'Region'      => 'nullable|string|max:100',
+            'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
             'PicName'     => 'nullable|string|max:200',
         ]);
 
@@ -196,7 +196,7 @@ class AppUserController extends Controller
                 'Phone'       => 'nullable|string|max:50',
                 'Address'     => 'nullable|string|max:500',
                 'KioskName'   => 'nullable|string|max:200',
-                'Region'      => 'nullable|string|max:100',
+                'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
                 'PicName'     => 'nullable|string|max:200',
             ]);
 

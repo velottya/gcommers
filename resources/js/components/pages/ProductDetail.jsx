@@ -1,13 +1,8 @@
-import { ArrowLeft, Box, CalendarDays, Layers3, Package, Scale, Star } from 'lucide-react';
+import { ArrowLeft, CalendarDays, FileText, Layers3, Package, Scale } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import StatusBadge from '../ui/StatusBadge';
-
-function formatRupiah(val) {
-    if (val == null) return '—';
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
-}
 
 function formatDate(val) {
     if (!val) return '—';
@@ -33,7 +28,7 @@ export default function ProductDetail() {
     const navigate = useNavigate();
     const [product, setProduct] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [error,   setError]   = useState(null);
 
     useEffect(() => {
         api.get(`/products/${id}`)
@@ -74,77 +69,55 @@ export default function ProductDetail() {
                         <h1 className="text-2xl font-semibold text-white">Detail Produk</h1>
                         <StatusBadge value={product?.status} />
                     </div>
-                    <p className="mt-1 text-sm text-slate-400">{product?.productCode}</p>
+                    <p className="mt-1 text-sm text-slate-400 font-mono">{product?.kodeProduk}</p>
                 </div>
             </div>
 
+            {/* Kartu ringkasan utama */}
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <InfoCard icon={Package} label="Nama" value={product?.name} />
-                <InfoCard icon={Scale} label="Kategori" value={product?.category} />
-                <InfoCard icon={Box} label="Stok" value={product?.stock ?? '—'} />
-                <InfoCard icon={Star} label="Rating" value={product?.rating ? Number(product.rating).toFixed(1) : '—'} />
+                <InfoCard icon={Package} label="Nama Produk" value={product?.namaProduk} />
+                <InfoCard icon={Scale}   label="Satuan"      value={product?.satuan} />
+                <InfoCard icon={Layers3} label="Jenis"       value={product?.jenis} />
+                <InfoCard icon={FileText}label="Status"      value={product?.status} />
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+            <div className="grid gap-6 xl:grid-cols-[1.5fr_0.5fr]">
                 <div className="space-y-6">
+                    {/* Informasi utama */}
                     <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Informasi Utama</h2>
+                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Informasi Produk</h2>
                         <div className="grid gap-4 sm:grid-cols-2">
-                            <InfoCard icon={Layers3} label="Kode Produk" value={product?.productCode} />
-                            <InfoCard icon={Package} label="Satuan" value={product?.unit} />
-                            <InfoCard icon={Box} label="Minimum Order" value={product?.minimumOrder} />
-                            <InfoCard icon={CalendarDays} label="Diperbarui" value={formatDate(product?.updatedAt)} />
+                            <InfoCard icon={Layers3}     label="Kode Produk" value={product?.kodeProduk} />
+                            <InfoCard icon={Scale}       label="Satuan"      value={product?.satuan} />
+                            <InfoCard icon={CalendarDays}label="Dibuat"      value={formatDate(product?.createdAt)} />
+                            <InfoCard icon={CalendarDays}label="Diperbarui"  value={formatDate(product?.updatedAt)} />
                         </div>
                     </section>
 
+                    {/* Uraian */}
                     <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Deskripsi</h2>
+                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Uraian</h2>
                         <p className="whitespace-pre-line leading-7 text-slate-300">
-                            {product?.description || '—'}
-                        </p>
-                    </section>
-
-                    <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Spesifikasi</h2>
-                        <p className="whitespace-pre-line leading-7 text-slate-300">
-                            {product?.specification || '—'}
+                            {product?.uraian || '—'}
                         </p>
                     </section>
                 </div>
 
                 <aside className="space-y-6">
                     <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Ringkasan Harga</h2>
+                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Detail Lainnya</h2>
                         <div className="space-y-3 text-sm text-slate-300">
                             <div className="flex items-center justify-between gap-4">
-                                <span>Harga</span>
-                                <span className="font-semibold text-white">{formatRupiah(product?.price)}</span>
+                                <span>Jenis</span>
+                                <span className="font-semibold text-white">{product?.jenis || '—'}</span>
                             </div>
                             <div className="flex items-center justify-between gap-4">
                                 <span>Status</span>
-                                <span className="font-semibold text-white">{product?.status || '—'}</span>
+                                <StatusBadge value={product?.status} />
                             </div>
                             <div className="flex items-center justify-between gap-4">
-                                <span>Source Product ID</span>
-                                <span className="font-semibold text-white">{product?.sourceProductId ?? '—'}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Icon</span>
-                                <span className="font-semibold text-white">{product?.iconName || '—'}</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Waktu</h2>
-                        <div className="space-y-3 text-sm text-slate-300">
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Dibuat</span>
-                                <span className="font-semibold text-white">{formatDate(product?.createdAt)}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Diperbarui</span>
-                                <span className="font-semibold text-white">{formatDate(product?.updatedAt)}</span>
+                                <span>Foto</span>
+                                <span className="font-semibold text-white">{product?.foto || '—'}</span>
                             </div>
                         </div>
                     </section>

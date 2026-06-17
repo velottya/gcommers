@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './layout/Layout';
 import AlokasiOrderBiaya from './pages/AlokasiOrderBiaya';
+import AjuanStok from './pages/AjuanStok';
 import AlokasiSopir from './pages/AlokasiSopir';
 import AppUserList from './pages/AppUserList';
 import Dashboard from './pages/Dashboard';
@@ -77,6 +78,10 @@ export default function App({ user }) {
                     {role === 'AdminRegion' && (
                         <Route path="/alokasi-biaya"  element={<AlokasiOrderBiaya user={user} />} />
                     )}
+                    <Route
+                        path="/ajuan-stok"
+                        element={role === 'AdminRegion' ? <AjuanStok user={user} /> : <Navigate to="/dashboard" replace />}
+                    />
 
                     {/* ─── AdminTransport only ─── */}
                     {role === 'AdminTransport' && (

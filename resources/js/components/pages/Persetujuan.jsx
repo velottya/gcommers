@@ -1,4 +1,4 @@
-import { CheckCircle, Coins, FileText, Wallet, XCircle } from 'lucide-react';
+import { CheckCircle, Coins, FileText, Package, Wallet, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
@@ -343,12 +343,146 @@ function TabTagihan() {
     );
 }
 
+// ─── Tab: Ajuan Stok ─────────────────────────────────────────────────────────
+
+function hitungBiaya(r) {
+    const subtotal   = Number(r.harga_satuan || 0) * Number(r.qty_requested || 0);
+    const totalKirim = Number(r.biaya_pengiriman_per_kg || 0) * Number(r.qty_requested || 0) * 1000;
+    const pphAmt     = subtotal * (Number(r.pajak_pph_persen || 0) / 100);
+    const total      = subtotal + totalKirim + pphAmt;
+    return { subtotal, totalKirim, pphAmt, total };
+}
+
+function TabAjuanStok() {
+    const [data,    setData]    = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error,   setError]   = useState(null);
+    const [page,    setPage]    = useState(1);
+    const [status,  setStatus]  = useState('submitted');
+    const [target,  setTarget]  = useState(null);
+
+    const fetch = useCallback(() => {
+        setLoading(true);
+        api.get('/product-stock-requests', { page, ...(status ? { status } : {}) })
+            .then(setData)
+            .catch(e => setError(e.message))
+            .finally(() => setLoading(false));
+    }, [page, status]);
+
+    useEffect(() => { fetch(); }, [fetch]);
+
+    const columns = [
+        {
+            key: 'product_name',
+            label: 'Produk',
+            render: r => (
+                <div>
+                    <p className="font-medium text-white text-sm">{r.product_name}</p>
+                    {r.product_code && <p className="text-xs text-slate-500 font-mono">{r.product_code}</p>}
+                </div>
+            ),
+        },
+        { key: 'region',          label: 'Region' },
+        { key: 'requested_by',    label: 'Diajukan Oleh',  render: r => <span className="text-xs text-slate-400">{r.requested_by}</span> },
+        { key: 'qty_requested',   label: 'Qty (TON)',       render: r => <span className="font-semibold text-amber-300">+{r.qty_requested}</span> },
+        { key: 'harga_satuan',           label: 'Harga/TON',  render: r => r.harga_satuan           ? formatRupiah(r.harga_satuan)                           : <span className="text-slate-600 text-xs">—</span> },
+        { key: 'biaya_pengiriman_per_kg',label: 'Ongkir/kg', render: r => r.biaya_pengiriman_per_kg ? <span>{formatRupiah(r.biaya_pengiriman_per_kg)}/kg</span> : <span className="text-slate-600 text-xs">—</span> },
+        { key: 'created_at',      label: 'Tgl Ajuan',       render: r => <span className="text-xs text-slate-400">{formatDate(r.created_at)}</span> },
+        { key: 'status',          label: 'Status',           render: r => <StatusChip value={r.status} /> },
+        {
+            key: '_act', label: '',
+            render: r => r.status === 'submitted' ? (
+                <button onClick={() => setTarget(r)}
+                    className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20 transition">
+                    Tinjau
+                </button>
+            ) : null,
+        },
+    ];
+
+    const targetBiaya = target ? hitungBiaya(target) : null;
+
+    return (
+        <div className="space-y-4">
+            <div className="flex gap-3">
+                <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
+                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="submitted">Menunggu Persetujuan</option>
+                    <option value="approved">Disetujui</option>
+                    <option value="rejected">Ditolak</option>
+                    <option value="">Semua</option>
+                </select>
+            </div>
+
+            {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>}
+
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Belum ada ajuan stok masuk." />
+            <Pagination meta={data} onPageChange={setPage} />
+
+            {target && (
+                <ReviewModal
+                    title="Tinjau Ajuan Tambah Stok"
+                    summary={
+                        <div className="space-y-2 text-xs">
+                            {/* Info produk */}
+                            <div className="space-y-1">
+                                <p><span className="text-slate-500">Produk:</span> <strong className="text-white">{target.product_name}</strong>{target.product_code && <span className="ml-1 font-mono text-slate-500">({target.product_code})</span>}</p>
+                                <p><span className="text-slate-500">Region:</span> {target.region}</p>
+                                <p><span className="text-slate-500">Diajukan oleh:</span> {target.requested_by}</p>
+                                <p><span className="text-slate-500">Jumlah stok:</span> <strong className="text-amber-300">+{target.qty_requested} TON</strong></p>
+                                {target.notes && <p><span className="text-slate-500">Keterangan:</span> {target.notes}</p>}
+                            </div>
+
+                            {/* Rincian harga */}
+                            {target.harga_satuan && (
+                                <div className="border-t border-white/8 pt-2 space-y-1">
+                                    <p className="text-slate-500 font-medium mb-1">Rincian Harga</p>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-500">Harga satuan</span>
+                                        <span>{formatRupiah(target.harga_satuan)}/TON</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-500">Subtotal ({target.qty_requested} TON)</span>
+                                        <span>{formatRupiah(targetBiaya.subtotal)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-500">
+                                            Ongkir ({target.qty_requested} TON = {(target.qty_requested * 1000).toLocaleString('id-ID')} kg × {formatRupiah(target.biaya_pengiriman_per_kg)}/kg)
+                                        </span>
+                                        <span>{formatRupiah(targetBiaya.totalKirim)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-500">PPH ({target.pajak_pph_persen}%)</span>
+                                        <span>{formatRupiah(targetBiaya.pphAmt)}</span>
+                                    </div>
+                                    <div className="flex justify-between border-t border-white/8 pt-1 font-semibold text-amber-300">
+                                        <span>Total Estimasi</span>
+                                        <span>{formatRupiah(targetBiaya.total)}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <p className="text-slate-600 italic border-t border-white/8 pt-2">
+                                Jika disetujui: stok region +{target.qty_requested} TON, harga & ongkir region diperbarui.
+                            </p>
+                        </div>
+                    }
+                    onClose={() => { setTarget(null); fetch(); }}
+                    onApprove={note => api.post(`/product-stock-requests/${target.id}/approve`, { review_note: note })}
+                    onReject={note  => api.post(`/product-stock-requests/${target.id}/reject`,  { review_note: note })}
+                />
+            )}
+        </div>
+    );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const TABS = [
     { key: 'biaya',   label: 'Alokasi Biaya',    icon: Wallet },
     { key: 'quota',   label: 'Quota Subsidi',     icon: Coins },
     { key: 'tagihan', label: 'Tagihan Transport', icon: FileText },
+    { key: 'stok',    label: 'Ajuan Stok',        icon: Package },
 ];
 
 export default function Persetujuan() {
@@ -359,12 +493,12 @@ export default function Persetujuan() {
             <div>
                 <h1 className="text-2xl font-semibold text-white">Persetujuan Ajuan</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Tinjau dan setujui ajuan alokasi biaya, quota subsidi, dan tagihan transportir.
+                    Tinjau dan setujui ajuan alokasi biaya, quota subsidi, tagihan transportir, dan ajuan stok produk.
                 </p>
             </div>
 
             {/* Tab bar */}
-            <div className="flex gap-1 rounded-xl border border-white/8 bg-white/3 p-1 w-fit">
+            <div className="flex flex-wrap gap-1 rounded-xl border border-white/8 bg-white/3 p-1 w-fit">
                 {TABS.map(({ key, label, icon: Icon }) => (
                     <button key={key} onClick={() => setTab(key)}
                         className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition
@@ -378,6 +512,7 @@ export default function Persetujuan() {
             {tab === 'biaya'   && <TabAlokasibiaya />}
             {tab === 'quota'   && <TabQuota />}
             {tab === 'tagihan' && <TabTagihan />}
+            {tab === 'stok'    && <TabAjuanStok />}
         </div>
     );
 }

@@ -6,6 +6,7 @@ import {
     LayoutDashboard,
     LogOut,
     Package,
+    PackagePlus,
     Receipt,
     Settings,
     ShoppingCart,
@@ -35,6 +36,8 @@ const MENUS = {
     AdminRegion: [
         { icon: LayoutDashboard, label: 'Beranda',             path: '/dashboard' },
         { icon: ShoppingCart,    label: 'Rekap Pesanan Kiosk', path: '/orders' },
+        { icon: Package,         label: 'Produk',              path: '/products' },
+        { icon: PackagePlus,     label: 'Ajuan Stok',          path: '/ajuan-stok' },
         { icon: Wallet,          label: 'Alokasi Biaya',       path: '/alokasi-biaya' },
         { icon: Coins,           label: 'Quota Subsidi',       path: '/quota-subsidi' },
         { icon: Users,           label: 'Daftar Admin Region', path: '/users' },

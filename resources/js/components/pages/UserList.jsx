@@ -17,6 +17,15 @@ const ROLE_OPTIONS = [
     { value: 'AdminTransport', label: 'AdminTransport' },
 ];
 
+const VALID_REGIONS = [
+    'Jawa Timur',
+    'Jawa Tengah Selatan',
+    'Jawa Tengah Utara',
+    'Makassar',
+    'Medan',
+    'Lampung',
+];
+
 const EMPTY_FORM = {
     Email: '', DisplayName: '', Role: 'AdminRegion', Phone: '',
     Region: '', CompanyName: '', TransportirName: '', PoliceNumber: '', PicName: '',
@@ -176,13 +185,12 @@ function AdminUserModal({ open, onClose, onSaved, editUser }) {
                         {/* Role-specific fields */}
                         {form.Role === 'AdminRegion' && (
                             <Field label="Region" error={errors.Region?.[0]}>
-                                <Input
-                                    type="text"
-                                    value={form.Region}
-                                    onChange={set('Region')}
-                                    placeholder="Contoh: Jawa Barat"
-                                    error={errors.Region?.[0]}
-                                />
+                                <Select value={form.Region} onChange={set('Region')} error={errors.Region?.[0]}>
+                                    <option value="">-- Pilih Region --</option>
+                                    {VALID_REGIONS.map(r => (
+                                        <option key={r} value={r}>{r}</option>
+                                    ))}
+                                </Select>
                             </Field>
                         )}
 
