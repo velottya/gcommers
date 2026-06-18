@@ -190,12 +190,14 @@ function TabAlokasibiaya() {
 // ─── Tab: Quota Subsidi ───────────────────────────────────────────────────────
 
 function TabQuota() {
-    const [data,    setData]    = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error,   setError]   = useState(null);
-    const [page,    setPage]    = useState(1);
-    const [status,  setStatus]  = useState('submitted');
-    const [target,  setTarget]  = useState(null);
+    const [data,          setData]          = useState(null);
+    const [loading,       setLoading]       = useState(true);
+    const [error,         setError]         = useState(null);
+    const [page,          setPage]          = useState(1);
+    const [status,        setStatus]        = useState('submitted');
+    const [target,        setTarget]        = useState(null);
+    const [targetDetail,  setTargetDetail]  = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     const fetch = useCallback(() => {
         setLoading(true);
@@ -207,25 +209,80 @@ function TabQuota() {
 
     useEffect(() => { fetch(); }, [fetch]);
 
+    async function openReview(row) {
+        setTarget(row);
+        setDetailLoading(true);
+        try {
+            const detail = await api.get(`/quota-subsidi/${row.id}`);
+            setTargetDetail(detail);
+        } catch {
+            setTargetDetail(null);
+        } finally {
+            setDetailLoading(false);
+        }
+    }
+
+    function closeReview() { setTarget(null); setTargetDetail(null); fetch(); }
+
+    function fTon(v) {
+        return v == null ? '—' : `${Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
+    }
+
     const columns = [
-        { key: 'region',       label: 'Region' },
-        { key: 'kiosk_email',  label: 'Kiosk',   render: r => r.kiosk_email  || <span className="text-slate-500 italic text-xs">Semua kiosk</span> },
-        { key: 'product_code', label: 'Produk',  render: r => r.product_code || <span className="text-slate-500 italic text-xs">Semua produk</span> },
-        { key: 'quota_kg',     label: 'Quota',   render: r => <span className="font-mono">{Number(r.quota_kg).toLocaleString('id-ID')} kg</span> },
-        { key: 'period',       label: 'Periode' },
-        { key: 'created_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.created_by}</span> },
-        { key: 'status',       label: 'Status',  render: r => <StatusChip value={r.status} /> },
-        { key: 'review_note',  label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
+        { key: 'region',         label: 'Region' },
+        { key: 'year',           label: 'Tahun',  render: r => <span className="font-semibold text-white">{r.year}</span> },
+        { key: 'products_count', label: 'Produk', render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
+        { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
+        { key: 'status',         label: 'Status', render: r => <StatusChip value={r.status} /> },
+        { key: 'review_note',    label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
         {
             key: '_act', label: '',
             render: r => r.status === 'submitted' ? (
-                <button onClick={() => setTarget(r)}
+                <button onClick={() => openReview(r)}
                     className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20 transition">
                     Tinjau
                 </button>
             ) : null,
         },
     ];
+
+    const detailSummary = targetDetail ? (
+        <div className="space-y-3 text-xs">
+            <div className="space-y-1">
+                <p><span className="text-slate-500">Region:</span> <strong className="text-white">{targetDetail.region}</strong></p>
+                <p><span className="text-slate-500">Tahun:</span> {targetDetail.year}</p>
+                {targetDetail.notes && <p><span className="text-slate-500">Catatan:</span> {targetDetail.notes}</p>}
+            </div>
+            <div className="border-t border-white/8 pt-2 space-y-2">
+                <p className="font-medium text-slate-400">Rincian Produk ({targetDetail.products?.length ?? 0} produk)</p>
+                {(targetDetail.products ?? []).map(p => (
+                    <div key={p.id} className="rounded-lg border border-white/8 bg-white/3 px-3 py-2 space-y-1">
+                        <div className="flex justify-between">
+                            <span className="font-medium text-white">{p.product_name}</span>
+                            <span className="text-amber-300 font-mono">{fTon(p.total_qty_ton)}</span>
+                        </div>
+                        <div className="pl-2 space-y-0.5 text-slate-400">
+                            {(p.kiosk_allocations ?? []).map(k => (
+                                <div key={k.id} className="flex justify-between">
+                                    <span>{k.kiosk_name}</span>
+                                    <span className="font-mono">{fTon(k.qty_ton)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    ) : detailLoading ? (
+        <div className="flex justify-center py-4">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+        </div>
+    ) : (
+        <div className="text-xs text-slate-400">
+            <p><span className="text-slate-500">Region:</span> {target?.region}</p>
+            <p><span className="text-slate-500">Tahun:</span> {target?.year}</p>
+        </div>
+    );
 
     return (
         <div className="space-y-4">
@@ -246,17 +303,9 @@ function TabQuota() {
 
             {target && (
                 <ReviewModal
-                    title="Tinjau Quota Subsidi"
-                    summary={
-                        <div className="space-y-1 text-xs">
-                            <p><span className="text-slate-500">Region:</span> {target.region}</p>
-                            <p><span className="text-slate-500">Kiosk:</span> {target.kiosk_email || 'Semua kiosk'}</p>
-                            <p><span className="text-slate-500">Produk:</span> {target.product_code || 'Semua produk'}</p>
-                            <p><span className="text-slate-500">Quota:</span> <strong className="text-amber-300">{Number(target.quota_kg).toLocaleString('id-ID')} kg</strong></p>
-                            <p><span className="text-slate-500">Periode:</span> {target.period}</p>
-                        </div>
-                    }
-                    onClose={() => { setTarget(null); fetch(); }}
+                    title={`Tinjau Quota Subsidi — ${target.region} ${target.year}`}
+                    summary={detailSummary}
+                    onClose={closeReview}
                     onApprove={note => api.post(`/quota-subsidi/${target.id}/approve`, { review_note: note })}
                     onReject={note  => api.post(`/quota-subsidi/${target.id}/reject`,  { review_note: note })}
                 />

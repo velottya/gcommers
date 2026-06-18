@@ -79,8 +79,10 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/order-cost-allocations/{id}/reject',       [OrderCostAllocationController::class, 'reject']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
+    Route::get('/quota-subsidi/kiosks',       [SubsidyQuotaController::class, 'kiosks']);
     Route::get('/quota-subsidi',              [SubsidyQuotaController::class, 'index']);
     Route::post('/quota-subsidi',             [SubsidyQuotaController::class, 'store']);
+    Route::get('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'show']);
     Route::put('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'update']);
     Route::delete('/quota-subsidi/{id}',      [SubsidyQuotaController::class, 'destroy']);
     Route::post('/quota-subsidi/{id}/submit', [SubsidyQuotaController::class, 'submit']);

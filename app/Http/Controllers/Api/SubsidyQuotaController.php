@@ -3,167 +3,250 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\SubsidyQuota;
+use App\Models\Product;
+use App\Models\SubsidyQuotaKioskAllocation;
+use App\Models\SubsidyQuotaProduct;
+use App\Models\SubsidyQuotaSubmission;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class SubsidyQuotaController extends Controller
 {
+    // ── Daftar ajuan ──────────────────────────────────────────────────────────
+
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = SubsidyQuota::query();
+        $query = SubsidyQuotaSubmission::withCount('products')
+                                        ->orderByDesc('year')
+                                        ->orderBy('region');
 
-        if ($user->Role === 'AdminRegion' && $user->Region) {
+        if ($user->Role === 'AdminRegion') {
             $query->where('region', $user->Region);
+        } elseif ($request->filled('region')) {
+            $query->where('region', $request->region);
         }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('period')) {
-            $query->where('period', $request->period);
+        if ($request->filled('year')) {
+            $query->where('year', $request->year);
         }
 
-        if ($request->filled('region')) {
-            $query->where('region', 'like', '%' . $request->region . '%');
-        }
-
-        $quotas = $query->orderBy('period', 'desc')->orderBy('region')->paginate(20);
-
-        return response()->json($quotas);
+        return response()->json($query->paginate(20));
     }
+
+    // ── Detail satu ajuan (dengan produk + alokasi kiosk) ────────────────────
+
+    public function show(int $id)
+    {
+        $user       = Auth::user();
+        $query      = SubsidyQuotaSubmission::with('products.kioskAllocations');
+
+        if ($user->Role === 'AdminRegion') {
+            $query->where('region', $user->Region);
+        }
+
+        return response()->json($query->findOrFail($id));
+    }
+
+    // ── Kiosk list untuk form alokasi (tanpa pagination) ─────────────────────
+
+    public function kiosks(Request $request)
+    {
+        $user = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403);
+
+        $kiosks = User::where('Role', 'kiosk')
+                      ->where('Region', $user->Region)
+                      ->orderBy('KioskName')
+                      ->get(['Id', 'KioskName', 'Email'])
+                      ->map(fn ($u) => [
+                          'id'    => $u->Id,
+                          'name'  => $u->KioskName ?? $u->Email,
+                          'email' => $u->Email,
+                      ]);
+
+        return response()->json($kiosks);
+    }
+
+    // ── Buat ajuan baru (draft) ───────────────────────────────────────────────
 
     public function store(Request $request)
     {
         $user = Auth::user();
-        $this->ensureCanManage($user);
+        abort_unless($user->Role === 'AdminRegion', 403);
 
-        $data = $request->validate([
-            'region'       => 'required|string|max:255',
-            'kiosk_email'  => 'nullable|email|max:255',
-            'product_code' => 'nullable|string|max:100',
-            'quota_kg'     => 'required|numeric|min:0',
-            'period'       => ['required', 'regex:/^\d{4}-\d{2}$/'],
-        ]);
+        $validated = $this->validatePayload($request);
 
-        if ($user->Role === 'AdminRegion') {
-            $data['region'] = $user->Region;
-        }
+        $exists = SubsidyQuotaSubmission::where('region', $user->Region)
+                                         ->where('year', $validated['year'])
+                                         ->exists();
+        abort_if($exists, 422, "Ajuan quota untuk region {$user->Region} tahun {$validated['year']} sudah ada.");
 
-        $data['created_by'] = $user->Email;
-        $data['status']     = 'draft';
+        $submission = null;
 
-        $quota = SubsidyQuota::create($data);
+        DB::transaction(function () use ($validated, $user, &$submission) {
+            $submission = SubsidyQuotaSubmission::create([
+                'region'       => $user->Region,
+                'year'         => $validated['year'],
+                'status'       => 'draft',
+                'notes'        => $validated['notes'] ?? null,
+                'submitted_by' => $user->Email,
+            ]);
 
-        return response()->json($quota, 201);
+            $this->syncProducts($submission, $validated['products']);
+        });
+
+        return response()->json($submission->load('products.kioskAllocations'), 201);
     }
+
+    // ── Edit ajuan (hanya draft atau rejected) ────────────────────────────────
 
     public function update(Request $request, int $id)
     {
-        $user  = Auth::user();
-        $this->ensureCanManage($user);
+        $user       = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403);
 
-        $quota = $this->findAccessible($id, $user);
-        abort_unless($quota->status === 'draft', 422, 'Hanya quota berstatus draft yang bisa diedit.');
+        $submission = SubsidyQuotaSubmission::where('region', $user->Region)->findOrFail($id);
+        abort_unless(
+            in_array($submission->status, ['draft', 'rejected'], true),
+            422,
+            'Hanya ajuan berstatus draft atau ditolak yang bisa diedit.'
+        );
 
-        $data = $request->validate([
-            'region'       => 'sometimes|required|string|max:255',
-            'kiosk_email'  => 'nullable|email|max:255',
-            'product_code' => 'nullable|string|max:100',
-            'quota_kg'     => 'sometimes|required|numeric|min:0',
-            'period'       => ['sometimes', 'required', 'regex:/^\d{4}-\d{2}$/'],
-        ]);
+        $validated = $this->validatePayload($request);
 
-        if ($user->Role === 'AdminRegion') {
-            unset($data['region']);
-        }
+        DB::transaction(function () use ($submission, $validated) {
+            $submission->update([
+                'year'   => $validated['year'],
+                'notes'  => $validated['notes'] ?? null,
+                'status' => 'draft',
+            ]);
 
-        $quota->update($data);
+            // Hapus produk lama (cascade ke kiosk_allocations)
+            $submission->products()->delete();
+            $this->syncProducts($submission, $validated['products']);
+        });
 
-        return response()->json($quota->fresh());
+        return response()->json($submission->fresh()->load('products.kioskAllocations'));
     }
+
+    // ── Hapus ajuan (hanya draft) ─────────────────────────────────────────────
 
     public function destroy(int $id)
     {
-        $user  = Auth::user();
-        $this->ensureCanManage($user);
+        $user       = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403);
 
-        $quota = $this->findAccessible($id, $user);
-        $quota->delete();
+        $submission = SubsidyQuotaSubmission::where('region', $user->Region)->findOrFail($id);
+        abort_unless($submission->status === 'draft', 422, 'Hanya ajuan berstatus draft yang bisa dihapus.');
+
+        $submission->delete();
 
         return response()->noContent();
     }
 
+    // ── Ajukan ke SuperAdmin ──────────────────────────────────────────────────
+
     public function submit(int $id)
     {
-        $user  = Auth::user();
-        abort_unless($user->Role === 'AdminRegion', 403, 'Akses tidak diizinkan.');
+        $user       = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403);
 
-        $quota = SubsidyQuota::where('region', trim($user->Region ?? ''))->findOrFail($id);
-        abort_unless($quota->status === 'draft', 422, 'Quota ini sudah diajukan atau sudah diproses.');
+        $submission = SubsidyQuotaSubmission::where('region', $user->Region)->findOrFail($id);
+        abort_unless($submission->status === 'draft', 422, 'Ajuan ini sudah diajukan atau sudah diproses.');
 
-        $quota->update(['status' => 'submitted']);
+        abort_if($submission->products()->doesntExist(), 422, 'Ajuan harus memiliki minimal 1 produk sebelum diajukan.');
 
-        return response()->json($quota->fresh());
+        $submission->update(['status' => 'submitted']);
+
+        return response()->json($submission->fresh());
     }
+
+    // ── Setujui (SuperAdmin) ──────────────────────────────────────────────────
 
     public function approve(Request $request, int $id)
     {
         $user = Auth::user();
-        abort_unless($user->Role === 'SuperAdmin', 403, 'Akses tidak diizinkan.');
+        abort_unless($user->Role === 'SuperAdmin', 403);
 
-        $quota = SubsidyQuota::findOrFail($id);
-        abort_unless($quota->status === 'submitted', 422, 'Quota belum diajukan.');
+        $submission = SubsidyQuotaSubmission::findOrFail($id);
+        abort_unless($submission->status === 'submitted', 422, 'Ajuan belum diajukan.');
 
-        $quota->update([
+        $submission->update([
             'status'      => 'approved',
             'reviewed_by' => $user->Email,
             'reviewed_at' => now(),
             'review_note' => $request->input('review_note'),
         ]);
 
-        return response()->json($quota->fresh());
+        return response()->json($submission->fresh());
     }
+
+    // ── Tolak (SuperAdmin) ────────────────────────────────────────────────────
 
     public function reject(Request $request, int $id)
     {
         $user = Auth::user();
-        abort_unless($user->Role === 'SuperAdmin', 403, 'Akses tidak diizinkan.');
+        abort_unless($user->Role === 'SuperAdmin', 403);
 
-        $quota = SubsidyQuota::findOrFail($id);
-        abort_unless($quota->status === 'submitted', 422, 'Quota belum diajukan.');
+        $submission = SubsidyQuotaSubmission::findOrFail($id);
+        abort_unless($submission->status === 'submitted', 422, 'Ajuan belum diajukan.');
 
-        $data = $request->validate(['review_note' => 'nullable|string|max:1000']);
-
-        $quota->update([
+        $submission->update([
             'status'      => 'rejected',
             'reviewed_by' => $user->Email,
             'reviewed_at' => now(),
-            'review_note' => $data['review_note'] ?? null,
+            'review_note' => $request->input('review_note'),
         ]);
 
-        return response()->json($quota->fresh());
+        return response()->json($submission->fresh());
     }
 
-    private function ensureCanManage($user): void
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private function validatePayload(Request $request): array
     {
-        abort_unless(
-            in_array($user->Role, ['SuperAdmin', 'AdminRegion'], true),
-            403,
-            'Akses tidak diizinkan.'
-        );
+        return $request->validate([
+            'year'                                           => 'required|integer|min:2024|max:2100',
+            'notes'                                          => 'nullable|string|max:1000',
+            'products'                                       => 'required|array|min:1',
+            'products.*.product_id'                          => 'required|integer|exists:product_master,id',
+            'products.*.total_qty_ton'                       => 'required|numeric|min:0.01',
+            'products.*.kiosk_allocations'                   => 'required|array|min:1',
+            'products.*.kiosk_allocations.*.kiosk_id'        => 'required|integer',
+            'products.*.kiosk_allocations.*.kiosk_name'      => 'required|string|max:200',
+            'products.*.kiosk_allocations.*.kiosk_email'     => 'required|email|max:256',
+            'products.*.kiosk_allocations.*.qty_ton'         => 'required|numeric|min:0.01',
+        ]);
     }
 
-    private function findAccessible(int $id, $user): SubsidyQuota
+    private function syncProducts(SubsidyQuotaSubmission $submission, array $products): void
     {
-        $query = SubsidyQuota::query();
+        foreach ($products as $p) {
+            $product      = Product::findOrFail($p['product_id']);
+            $quotaProduct = SubsidyQuotaProduct::create([
+                'submission_id' => $submission->id,
+                'product_id'    => $product->id,
+                'product_code'  => $product->kode_produk,
+                'product_name'  => $product->nama_produk,
+                'total_qty_ton' => $p['total_qty_ton'],
+            ]);
 
-        if ($user->Role === 'AdminRegion' && $user->Region) {
-            $query->where('region', $user->Region);
+            foreach ($p['kiosk_allocations'] as $alloc) {
+                SubsidyQuotaKioskAllocation::create([
+                    'quota_product_id' => $quotaProduct->id,
+                    'kiosk_id'         => $alloc['kiosk_id'],
+                    'kiosk_name'       => $alloc['kiosk_name'],
+                    'kiosk_email'      => $alloc['kiosk_email'],
+                    'qty_ton'          => $alloc['qty_ton'],
+                ]);
+            }
         }
-
-        return $query->findOrFail($id);
     }
 }
