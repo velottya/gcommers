@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\KecamatanProductStock;
 use App\Models\Product;
 use App\Models\SubsidyQuotaKecamatanAllocation;
 use App\Models\SubsidyQuotaProduct;
@@ -20,7 +21,7 @@ class SubsidyQuotaController extends Controller
     {
         $user  = Auth::user();
         $query = SubsidyQuotaSubmission::withCount('products')
-                                        ->orderByDesc('year')
+                                        ->orderByDesc('period')
                                         ->orderBy('region');
 
         if ($user->Role === 'AdminRegion') {
@@ -33,8 +34,8 @@ class SubsidyQuotaController extends Controller
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('year')) {
-            $query->where('year', $request->year);
+        if ($request->filled('period')) {
+            $query->where('period', $request->period);
         }
 
         if ($request->filled('date_from')) {
@@ -90,16 +91,16 @@ class SubsidyQuotaController extends Controller
         $validated = $this->validatePayload($request);
 
         $exists = SubsidyQuotaSubmission::where('region', $user->Region)
-                                         ->where('year', $validated['year'])
+                                         ->where('period', $validated['period'])
                                          ->exists();
-        abort_if($exists, 422, "Ajuan quota untuk region {$user->Region} tahun {$validated['year']} sudah ada.");
+        abort_if($exists, 422, "Ajuan quota untuk region {$user->Region} periode {$validated['period']} sudah ada. Edit ajuan yang sudah ada untuk merevisi alokasinya.");
 
         $submission = null;
 
         DB::transaction(function () use ($validated, $user, &$submission) {
             $submission = SubsidyQuotaSubmission::create([
                 'region'       => $user->Region,
-                'year'         => $validated['year'],
+                'period'       => $validated['period'],
                 'status'       => 'draft',
                 'notes'        => $validated['notes'] ?? null,
                 'submitted_by' => $user->Email,
@@ -120,16 +121,16 @@ class SubsidyQuotaController extends Controller
 
         $submission = SubsidyQuotaSubmission::where('region', $user->Region)->findOrFail($id);
         abort_unless(
-            in_array($submission->status, ['draft', 'rejected'], true),
+            in_array($submission->status, ['draft', 'rejected', 'approved', 'partially_approved'], true),
             422,
-            'Hanya ajuan berstatus draft atau ditolak yang bisa diedit.'
+            'Ajuan ini sedang menunggu persetujuan, tidak bisa direvisi.'
         );
 
         $validated = $this->validatePayload($request);
 
         DB::transaction(function () use ($submission, $validated) {
             $submission->update([
-                'year'   => $validated['year'],
+                'period' => $validated['period'],
                 'notes'  => $validated['notes'] ?? null,
                 'status' => 'draft',
             ]);
@@ -174,44 +175,129 @@ class SubsidyQuotaController extends Controller
         return response()->json($submission->fresh());
     }
 
-    // ── Setujui (SuperAdmin) ──────────────────────────────────────────────────
+    // ── Tinjau: setujui/tolak per baris kecamatan (SuperAdmin) ────────────────
 
-    public function approve(Request $request, int $id)
+    public function review(Request $request, int $id)
     {
         $user = Auth::user();
         abort_unless($user->Role === 'SuperAdmin', 403);
 
-        $submission = SubsidyQuotaSubmission::findOrFail($id);
+        $submission = SubsidyQuotaSubmission::with('products.kecamatanAllocations')->findOrFail($id);
         abort_unless($submission->status === 'submitted', 422, 'Ajuan belum diajukan.');
 
-        $submission->update([
-            'status'      => 'approved',
-            'reviewed_by' => $user->Email,
-            'reviewed_at' => now(),
-            'review_note' => $request->input('review_note'),
+        $validated = $request->validate([
+            'review_note'         => 'nullable|string|max:1000',
+            'decisions'           => 'required|array|min:1',
+            'decisions.*.id'      => 'required|integer',
+            'decisions.*.status'  => 'required|in:approved,rejected',
         ]);
 
-        return response()->json($submission->fresh());
+        $allocationIds = $submission->products->flatMap(fn ($p) => $p->kecamatanAllocations->pluck('id'))->all();
+        $decisionIds   = collect($validated['decisions'])->pluck('id')->all();
+        abort_unless(
+            empty(array_diff($allocationIds, $decisionIds)) && empty(array_diff($decisionIds, $allocationIds)),
+            422,
+            'Keputusan harus mencakup seluruh baris kecamatan dalam ajuan ini.'
+        );
+
+        DB::transaction(function () use ($submission, $validated, $user) {
+            $decisionMap = collect($validated['decisions'])->keyBy('id');
+
+            foreach ($submission->products as $product) {
+                foreach ($product->kecamatanAllocations as $alloc) {
+                    $alloc->update(['status' => $decisionMap[$alloc->id]['status']]);
+                }
+            }
+
+            $statuses = $decisionMap->pluck('status')->unique();
+            $overall  = $statuses->count() === 1
+                ? $statuses->first()
+                : 'partially_approved';
+
+            $submission->update([
+                'status'      => $overall,
+                'reviewed_by' => $user->Email,
+                'reviewed_at' => now(),
+                'review_note' => $validated['review_note'] ?? null,
+            ]);
+
+            $this->refreshCurrentStock($submission);
+        });
+
+        return response()->json($submission->fresh()->load('products.kecamatanAllocations'));
     }
 
-    // ── Tolak (SuperAdmin) ────────────────────────────────────────────────────
+    // ── Stok terkini per kecamatan (current state, untuk konsumen luar) ─────
 
-    public function reject(Request $request, int $id)
+    public function currentStock(Request $request)
     {
         $user = Auth::user();
-        abort_unless($user->Role === 'SuperAdmin', 403);
+        abort_unless(in_array($user->Role, ['SuperAdmin', 'AdminRegion'], true), 403);
 
-        $submission = SubsidyQuotaSubmission::findOrFail($id);
-        abort_unless($submission->status === 'submitted', 422, 'Ajuan belum diajukan.');
+        $query = KecamatanProductStock::query();
 
-        $submission->update([
-            'status'      => 'rejected',
-            'reviewed_by' => $user->Email,
-            'reviewed_at' => now(),
-            'review_note' => $request->input('review_note'),
-        ]);
+        if ($user->Role === 'AdminRegion') {
+            $query->where('region', $user->Region);
+        } elseif ($request->filled('region')) {
+            $query->where('region', $request->region);
+        }
 
-        return response()->json($submission->fresh());
+        if ($request->filled('kecamatan')) {
+            $query->where('kecamatan', $request->kecamatan);
+        }
+
+        if ($request->filled('period')) {
+            $query->where('period', $request->period);
+        }
+
+        $rows = $query->orderBy('kecamatan')->orderBy('product_name')->get()->map(function (KecamatanProductStock $s) {
+            $used = $s->usedTon();
+
+            return [
+                'id'            => $s->id,
+                'region'        => $s->region,
+                'kecamatan'     => $s->kecamatan,
+                'product_id'    => $s->product_id,
+                'product_code'  => $s->product_code,
+                'product_name'  => $s->product_name,
+                'period'        => $s->period,
+                'quota_ton'     => (float) $s->quota_ton,
+                'used_ton'      => $used,
+                'remaining_ton' => max(0, (float) $s->quota_ton - $used),
+                'approved_at'   => $s->approved_at,
+            ];
+        });
+
+        return response()->json($rows);
+    }
+
+    // ── "Current state" untuk konsumen luar (mis. app Flutter) ──────────────
+
+    private function refreshCurrentStock(SubsidyQuotaSubmission $submission): void
+    {
+        foreach ($submission->products as $product) {
+            foreach ($product->kecamatanAllocations as $alloc) {
+                if ($alloc->status !== 'approved') {
+                    continue;
+                }
+
+                KecamatanProductStock::updateOrCreate(
+                    [
+                        'kecamatan'  => $alloc->kecamatan,
+                        'product_id' => $product->product_id,
+                        'period'     => $submission->period,
+                    ],
+                    [
+                        'region'        => $submission->region,
+                        'product_code'  => $product->product_code,
+                        'product_name'  => $product->product_name,
+                        'quota_ton'     => $alloc->qty_ton,
+                        'submission_id' => $submission->id,
+                        'approved_at'   => now(),
+                    ]
+                );
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -219,7 +305,7 @@ class SubsidyQuotaController extends Controller
     private function validatePayload(Request $request): array
     {
         return $request->validate([
-            'year'                                           => 'required|integer|min:2024|max:2100',
+            'period'                                         => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
             'notes'                                          => 'nullable|string|max:1000',
             'products'                                       => 'required|array|min:1',
             'products.*.product_id'                          => 'required|integer|exists:product_master,id',

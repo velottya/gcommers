@@ -10,7 +10,7 @@ class SubsidyQuotaKecamatanAllocation extends Model
     protected $table = 'subsidy_quota_kecamatan_allocations';
 
     protected $fillable = [
-        'quota_product_id', 'kecamatan', 'qty_ton',
+        'quota_product_id', 'kecamatan', 'qty_ton', 'status',
     ];
 
     protected function casts(): array

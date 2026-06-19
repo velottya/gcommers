@@ -1,11 +1,11 @@
 <?php
 
 use App\Http\Controllers\Api\AppUserController;
+use App\Http\Controllers\Api\CostRateController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DriverAssignmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\OrderCostAllocationController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
@@ -70,25 +70,27 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     // Fee defaults — reference for AdminRegion when filling allocations
     Route::get('/settings/fees-view',         [SettingController::class, 'view']);
 
-    // Alokasi Biaya per Pesanan (AdminRegion → submit → SuperAdmin approve)
-    Route::get('/order-cost-allocations',                    [OrderCostAllocationController::class, 'index']);
-    Route::get('/order-cost-allocations/defaults',           [OrderCostAllocationController::class, 'defaults']);
-    Route::get('/order-cost-allocations/context/{orderId}',  [OrderCostAllocationController::class, 'context']);
-    Route::post('/order-cost-allocations',                   [OrderCostAllocationController::class, 'storeOrUpdate']);
-    Route::post('/order-cost-allocations/{id}/submit',       [OrderCostAllocationController::class, 'submit']);
-    Route::post('/order-cost-allocations/{id}/approve',      [OrderCostAllocationController::class, 'approve']);
-    Route::post('/order-cost-allocations/{id}/reject',       [OrderCostAllocationController::class, 'reject']);
+    // Tarif Biaya per Produk x Kecamatan (AdminRegion → submit → SuperAdmin approve)
+    Route::get('/cost-rates/kecamatan',     [CostRateController::class, 'kecamatanList']);
+    Route::get('/cost-rates/current',       [CostRateController::class, 'currentPrices']);
+    Route::get('/cost-rates',               [CostRateController::class, 'index']);
+    Route::post('/cost-rates',              [CostRateController::class, 'store']);
+    Route::get('/cost-rates/{id}',          [CostRateController::class, 'show']);
+    Route::put('/cost-rates/{id}',          [CostRateController::class, 'update']);
+    Route::delete('/cost-rates/{id}',       [CostRateController::class, 'destroy']);
+    Route::post('/cost-rates/{id}/submit',  [CostRateController::class, 'submit']);
+    Route::post('/cost-rates/{id}/review',  [CostRateController::class, 'review']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
     Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);
+    Route::get('/quota-subsidi/current',      [SubsidyQuotaController::class, 'currentStock']);
     Route::get('/quota-subsidi',              [SubsidyQuotaController::class, 'index']);
     Route::post('/quota-subsidi',             [SubsidyQuotaController::class, 'store']);
     Route::get('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'show']);
     Route::put('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'update']);
     Route::delete('/quota-subsidi/{id}',      [SubsidyQuotaController::class, 'destroy']);
     Route::post('/quota-subsidi/{id}/submit', [SubsidyQuotaController::class, 'submit']);
-    Route::post('/quota-subsidi/{id}/approve',[SubsidyQuotaController::class, 'approve']);
-    Route::post('/quota-subsidi/{id}/reject', [SubsidyQuotaController::class, 'reject']);
+    Route::post('/quota-subsidi/{id}/review', [SubsidyQuotaController::class, 'review']);
 
     // Alokasi Sopir / Driver Assignment (AdminTransport)
     Route::get('/driver-assignments',         [DriverAssignmentController::class, 'index']);

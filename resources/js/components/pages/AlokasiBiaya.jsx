@@ -1,5 +1,5 @@
-import { ArrowLeft, ChevronDown, ChevronRight, Coins, Plus, Send, Trash2 } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronDown, ChevronRight, Plus, Send, Trash2, Wallet } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
 
@@ -22,34 +22,42 @@ function StatusChip({ value }) {
     );
 }
 
-function fTon(val) {
-    return val == null ? '—' : `${Number(val).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
-}
-
-const MONTHS_ID = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
-function formatPeriod(period) {
-    if (!period) return '—';
-    const [y, m] = period.split('-');
-    return `${MONTHS_ID[parseInt(m, 10) - 1] ?? m} ${y}`;
-}
-
-function currentPeriod() {
-    return new Date().toISOString().slice(0, 7);
+function fRupiah(val) {
+    return val == null || val === '' ? '—' : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
 }
 
 let _uid = 0;
 const nextUid = () => ++_uid;
 
 function emptyProduct() {
-    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', total_qty_ton: '', kecamatan_allocations: [] };
+    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', rates: [] };
 }
 
-function emptyAlloc() {
-    return { _uid: nextUid(), kecamatan: '', qty_ton: '' };
+function emptyRate() {
+    return { _uid: nextUid(), kecamatan: '', harga_satuan: '', biaya_pengiriman: '' };
+}
+
+function groupItemsByProduct(items) {
+    const map = new Map();
+    for (const it of (items ?? [])) {
+        if (!map.has(it.product_id)) {
+            map.set(it.product_id, {
+                _uid: nextUid(),
+                product_id:   it.product_id,
+                product_code: it.product_code,
+                product_name: it.product_name,
+                rates: [],
+            });
+        }
+        map.get(it.product_id).rates.push({
+            _uid:              nextUid(),
+            kecamatan:         it.kecamatan,
+            harga_satuan:      String(it.harga_satuan),
+            biaya_pengiriman:  String(it.biaya_pengiriman),
+            status:            it.status,
+        });
+    }
+    return Array.from(map.values());
 }
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
@@ -58,7 +66,7 @@ function Inp({ error, className = '', ...props }) {
     return (
         <input
             className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-white outline-none transition
-                ${error ? 'border-red-400/60' : 'border-white/10 focus:border-amber-400/40'} ${className}`}
+                ${error ? 'border-red-400/60' : 'border-white/10 focus:border-teal-400/40'} ${className}`}
             {...props}
         />
     );
@@ -68,7 +76,7 @@ function Sel({ error, className = '', children, ...props }) {
     return (
         <select
             className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-white outline-none transition
-                ${error ? 'border-red-400/60' : 'border-white/10 focus:border-amber-400/40'} ${className}`}
+                ${error ? 'border-red-400/60' : 'border-white/10 focus:border-teal-400/40'} ${className}`}
             {...props}
         >
             {children}
@@ -83,47 +91,32 @@ function ErrBanner({ msg }) {
     );
 }
 
-// ─── ProductRow (dalam form edit) ─────────────────────────────────────────────
+// ─── ProductRateRow (dalam form edit) ─────────────────────────────────────────
 
-function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
+function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
     const [open, setOpen] = useState(true);
 
-    const allocated = p.kecamatan_allocations.reduce((s, k) => s + (parseFloat(k.qty_ton) || 0), 0);
-    const total     = parseFloat(p.total_qty_ton) || 0;
-    const remaining = total - allocated;
-    const overAllocated = remaining < -0.001;
-
-    // Kecamatan yang belum dialokasikan untuk produk ini
-    const usedKecamatan = new Set(p.kecamatan_allocations.map(k => k.kecamatan));
+    const usedKecamatan = new Set(p.rates.map(r => r.kecamatan));
     const availKecamatan = kecamatanList.filter(k => !usedKecamatan.has(k));
 
-    function addKecamatan() {
+    function addRate() {
         if (!availKecamatan.length) return;
+        onChange({ ...p, rates: [...p.rates, { ...emptyRate(), kecamatan: availKecamatan[0] }] });
+    }
+
+    function updateRate(uid, field, value) {
         onChange({
             ...p,
-            kecamatan_allocations: [
-                ...p.kecamatan_allocations,
-                { ...emptyAlloc(), kecamatan: availKecamatan[0] },
-            ],
+            rates: p.rates.map(r => r._uid === uid ? { ...r, [field]: value } : r),
         });
     }
 
-    function updateKecamatan(uid, field, value) {
-        onChange({
-            ...p,
-            kecamatan_allocations: p.kecamatan_allocations.map(k =>
-                k._uid === uid ? { ...k, [field]: value } : k
-            ),
-        });
-    }
-
-    function removeKecamatan(uid) {
-        onChange({ ...p, kecamatan_allocations: p.kecamatan_allocations.filter(k => k._uid !== uid) });
+    function removeRate(uid) {
+        onChange({ ...p, rates: p.rates.filter(r => r._uid !== uid) });
     }
 
     return (
         <div className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
-            {/* Header produk */}
             <div className="flex items-center gap-3 px-4 py-3">
                 <button type="button" onClick={() => setOpen(o => !o)}
                     className="text-slate-400 hover:text-white transition">
@@ -134,76 +127,57 @@ function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                     <p className="text-xs text-slate-500 font-mono">{p.product_code}</p>
                 </div>
                 {!readOnly && (
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <label className="text-xs text-slate-400 whitespace-nowrap">Total quota (TON)</label>
-                            <Inp type="number" min="0.01" step="0.01" value={p.total_qty_ton} className="w-28"
-                                onChange={e => onChange({ ...p, total_qty_ton: e.target.value })} />
-                        </div>
-                        <button type="button" onClick={onRemove}
-                            className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
-                            <Trash2 size={15} />
-                        </button>
-                    </div>
-                )}
-                {readOnly && (
-                    <span className="text-sm font-semibold text-amber-300">{fTon(p.total_qty_ton)}</span>
+                    <button type="button" onClick={onRemove}
+                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
+                        <Trash2 size={15} />
+                    </button>
                 )}
             </div>
 
-            {/* Kecamatan allocations */}
             {open && (
                 <div className="border-t border-white/8 px-4 pb-4 pt-3 space-y-3">
                     <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-slate-400">Alokasi per Kecamatan</p>
+                        <p className="text-xs font-medium text-slate-400">Tarif per Kecamatan</p>
                         {!readOnly && (
-                            <div className="flex items-center gap-3">
-                                {total > 0 && (
-                                    <span className={`text-xs font-mono ${overAllocated ? 'text-red-400' : 'text-slate-500'}`}>
-                                        {overAllocated ? '⚠ ' : ''}Dialokasikan: {fTon(allocated)} / {fTon(total)}
-                                        {!overAllocated && remaining > 0.001 && ` · sisa ${fTon(remaining)}`}
-                                    </span>
-                                )}
-                                <button type="button" onClick={addKecamatan} disabled={!availKecamatan.length}
-                                    className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                                    <Plus size={11} /> Tambah Kecamatan
-                                </button>
-                            </div>
+                            <button type="button" onClick={addRate} disabled={!availKecamatan.length}
+                                className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                                <Plus size={11} /> Tambah Kecamatan
+                            </button>
                         )}
                     </div>
 
-                    {p.kecamatan_allocations.length === 0 ? (
-                        <p className="text-xs text-slate-600 italic py-2">Belum ada kecamatan yang dialokasikan.</p>
+                    {p.rates.length === 0 ? (
+                        <p className="text-xs text-slate-600 italic py-2">Belum ada tarif kecamatan.</p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="text-xs text-slate-500 border-b border-white/8">
                                         <th className="text-left pb-2 font-medium">Kecamatan</th>
-                                        <th className="text-left pb-2 font-medium w-36">Qty (TON)</th>
+                                        <th className="text-left pb-2 font-medium w-40">Harga Satuan (Rp/kg)</th>
+                                        <th className="text-left pb-2 font-medium w-40">Biaya Pengiriman (Rp/kg)</th>
                                         {!readOnly && <th className="w-8" />}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {p.kecamatan_allocations.map(k => (
-                                        <tr key={k._uid}>
+                                    {p.rates.map(r => (
+                                        <tr key={r._uid}>
                                             <td className="py-2 pr-3">
                                                 {readOnly ? (
                                                     <div className="flex items-center gap-2">
-                                                        <p className="text-white">{k.kecamatan}</p>
-                                                        {k.status === 'approved' && (
+                                                        <p className="text-white">{r.kecamatan}</p>
+                                                        {r.status === 'approved' && (
                                                             <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">Setuju</span>
                                                         )}
-                                                        {k.status === 'rejected' && (
+                                                        {r.status === 'rejected' && (
                                                             <span className="rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-300">Ditolak</span>
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <Sel value={k.kecamatan}
-                                                        onChange={e => updateKecamatan(k._uid, 'kecamatan', e.target.value)}>
-                                                        {/* Opsi untuk kecamatan ini sendiri + yang belum terpakai */}
+                                                    <Sel value={r.kecamatan}
+                                                        onChange={e => updateRate(r._uid, 'kecamatan', e.target.value)}>
                                                         {kecamatanList.filter(kk =>
-                                                            kk === k.kecamatan || !usedKecamatan.has(kk)
+                                                            kk === r.kecamatan || !usedKecamatan.has(kk)
                                                         ).map(kk => (
                                                             <option key={kk} value={kk}>{kk}</option>
                                                         ))}
@@ -212,15 +186,23 @@ function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                                             </td>
                                             <td className="py-2 pr-3">
                                                 {readOnly ? (
-                                                    <span className="font-mono text-white">{fTon(k.qty_ton)}</span>
+                                                    <span className="font-mono text-white">{fRupiah(r.harga_satuan)}</span>
                                                 ) : (
-                                                    <Inp type="number" min="0.01" step="0.01" value={k.qty_ton}
-                                                        onChange={e => updateKecamatan(k._uid, 'qty_ton', e.target.value)} />
+                                                    <Inp type="number" min="0" step="1" value={r.harga_satuan}
+                                                        onChange={e => updateRate(r._uid, 'harga_satuan', e.target.value)} />
+                                                )}
+                                            </td>
+                                            <td className="py-2 pr-3">
+                                                {readOnly ? (
+                                                    <span className="font-mono text-white">{fRupiah(r.biaya_pengiriman)}</span>
+                                                ) : (
+                                                    <Inp type="number" min="0" step="1" value={r.biaya_pengiriman}
+                                                        onChange={e => updateRate(r._uid, 'biaya_pengiriman', e.target.value)} />
                                                 )}
                                             </td>
                                             {!readOnly && (
                                                 <td className="py-2">
-                                                    <button type="button" onClick={() => removeKecamatan(k._uid)}
+                                                    <button type="button" onClick={() => removeRate(r._uid)}
                                                         className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
                                                         <Trash2 size={13} />
                                                     </button>
@@ -241,7 +223,7 @@ function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
 // ─── FormView ─────────────────────────────────────────────────────────────────
 
 function FormView({ editId, userRegion, onBack, onSaved }) {
-    const [formPeriod,   setFormPeriod]   = useState(currentPeriod());
+    const [pphPersen,    setPphPersen]    = useState('');
     const [formNotes,    setFormNotes]    = useState('');
     const [formProducts, setFormProducts] = useState([]);
     const [products,     setProducts]     = useState([]);
@@ -252,39 +234,29 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
     const [error,        setError]        = useState(null);
     const isEdit = Boolean(editId);
 
-    // Produk yang belum ditambahkan ke form
     const usedProductIds = new Set(formProducts.map(p => String(p.product_id)));
     const availProducts  = products.filter(p => !usedProductIds.has(String(p.id)));
 
-    // Load reference data + detail jika edit
     useEffect(() => {
         setRefLoading(true);
         const tasks = [
             api.get('/products', { status: 'Aktif', per_page: 100 }),
-            api.get('/quota-subsidi/kecamatan'),
+            api.get('/cost-rates/kecamatan'),
+            api.get('/settings/fees-view'),
         ];
-        if (editId) tasks.push(api.get(`/quota-subsidi/${editId}`));
+        if (editId) tasks.push(api.get(`/cost-rates/${editId}`));
 
         Promise.all(tasks)
-            .then(([prodRes, kecamatanRes, detailRes]) => {
+            .then(([prodRes, kecamatanRes, feesRes, detailRes]) => {
                 setProducts(Array.isArray(prodRes) ? prodRes : (prodRes.data ?? []));
                 setKecamatanList(kecamatanRes ?? []);
 
                 if (detailRes) {
-                    setFormPeriod(detailRes.period ?? currentPeriod());
+                    setPphPersen(String(detailRes.pph_persen ?? ''));
                     setFormNotes(detailRes.notes ?? '');
-                    setFormProducts((detailRes.products ?? []).map(p => ({
-                        _uid: nextUid(),
-                        product_id:   p.product_id,
-                        product_code: p.product_code,
-                        product_name: p.product_name,
-                        total_qty_ton: String(p.total_qty_ton),
-                        kecamatan_allocations: (p.kecamatan_allocations ?? []).map(k => ({
-                            _uid:      nextUid(),
-                            kecamatan: k.kecamatan,
-                            qty_ton:   String(k.qty_ton),
-                        })),
-                    })));
+                    setFormProducts(groupItemsByProduct(detailRes.items));
+                } else {
+                    setPphPersen(String(feesRes?.pph_persen ?? ''));
                 }
             })
             .catch(e => setError(e.message || 'Gagal memuat data.'))
@@ -315,14 +287,14 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
 
     function buildPayload() {
         return {
-            period: formPeriod,
-            notes:  formNotes || null,
+            pph_persen: parseFloat(pphPersen),
+            notes:      formNotes || null,
             products: formProducts.map(p => ({
-                product_id:            p.product_id,
-                total_qty_ton:         parseFloat(p.total_qty_ton),
-                kecamatan_allocations: p.kecamatan_allocations.map(k => ({
-                    kecamatan: k.kecamatan,
-                    qty_ton:   parseFloat(k.qty_ton),
+                product_id: p.product_id,
+                rates: p.rates.map(r => ({
+                    kecamatan:        r.kecamatan,
+                    harga_satuan:     parseFloat(r.harga_satuan),
+                    biaya_pengiriman: parseFloat(r.biaya_pengiriman),
                 })),
             })),
         };
@@ -334,9 +306,9 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
         setError(null);
         try {
             if (isEdit) {
-                await api.put(`/quota-subsidi/${editId}`, buildPayload());
+                await api.put(`/cost-rates/${editId}`, buildPayload());
             } else {
-                await api.post('/quota-subsidi', buildPayload());
+                await api.post('/cost-rates', buildPayload());
             }
             onSaved();
         } catch (err) {
@@ -351,9 +323,8 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
         setSubmitting(true);
         setError(null);
         try {
-            // Simpan dulu, lalu ajukan
-            await api.put(`/quota-subsidi/${editId}`, buildPayload());
-            await api.post(`/quota-subsidi/${editId}/submit`);
+            await api.put(`/cost-rates/${editId}`, buildPayload());
+            await api.post(`/cost-rates/${editId}/submit`);
             onSaved();
         } catch (err) {
             setError(err.message || 'Gagal mengajukan.');
@@ -365,21 +336,20 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
     if (refLoading) {
         return (
             <div className="flex items-center justify-center py-24">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            {/* Back + title */}
             <div>
                 <button type="button" onClick={onBack}
                     className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition mb-4">
                     <ArrowLeft size={16} /> Kembali ke Daftar
                 </button>
                 <h1 className="text-2xl font-semibold text-white">
-                    {isEdit ? 'Edit Ajuan Quota' : 'Buat Ajuan Quota Subsidi'}
+                    {isEdit ? 'Edit Tarif Biaya' : 'Buat Ajuan Tarif Biaya'}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">Region: <span className="text-white">{userRegion}</span></p>
             </div>
@@ -387,12 +357,11 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
             <ErrBanner msg={error} />
 
             <form onSubmit={handleSave} className="space-y-6">
-                {/* Header fields */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-400">Periode</label>
-                        <Inp type="month" value={formPeriod}
-                            onChange={e => setFormPeriod(e.target.value)} />
+                        <label className="block text-xs font-medium text-slate-400">PPh Region (%)</label>
+                        <Inp type="number" min="0" max="100" step="0.01" value={pphPersen}
+                            onChange={e => setPphPersen(e.target.value)} />
                     </div>
                     <div className="space-y-1">
                         <label className="block text-xs font-medium text-slate-400">Catatan (opsional)</label>
@@ -401,32 +370,26 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     </div>
                 </div>
 
-                {/* Products */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-slate-200">Alokasi per Produk</h2>
-                        <div className="flex items-center gap-2">
-                            <Sel onChange={addProduct} className="w-56"
-                                disabled={!availProducts.length}>
-                                <option value="">{availProducts.length ? '+ Tambah Produk…' : 'Semua produk sudah ditambahkan'}</option>
-                                {availProducts.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.namaProduk ?? p.nama_produk}
-                                    </option>
-                                ))}
-                            </Sel>
-                        </div>
+                        <h2 className="text-sm font-semibold text-slate-200">Tarif per Produk</h2>
+                        <Sel onChange={addProduct} className="w-56" disabled={!availProducts.length}>
+                            <option value="">{availProducts.length ? '+ Tambah Produk…' : 'Semua produk sudah ditambahkan'}</option>
+                            {availProducts.map(p => (
+                                <option key={p.id} value={p.id}>{p.namaProduk ?? p.nama_produk}</option>
+                            ))}
+                        </Sel>
                     </div>
 
                     {formProducts.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-white/10 py-10 text-center">
-                            <Coins size={24} className="mx-auto mb-2 text-slate-600" />
+                            <Wallet size={24} className="mx-auto mb-2 text-slate-600" />
                             <p className="text-sm text-slate-500">Belum ada produk. Pilih produk di atas untuk mulai.</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
                             {formProducts.map(p => (
-                                <ProductRow key={p._uid} p={p} kecamatanList={kecamatanList}
+                                <ProductRateRow key={p._uid} p={p} kecamatanList={kecamatanList}
                                     onChange={newP => updateProduct(p._uid, newP)}
                                     onRemove={() => removeProduct(p._uid)}
                                     readOnly={false} />
@@ -435,7 +398,6 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     )}
                 </div>
 
-                {/* Actions */}
                 <div className="flex justify-end gap-3 border-t border-white/8 pt-5">
                     <button type="button" onClick={onBack}
                         className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-slate-400 hover:text-white transition">
@@ -448,7 +410,7 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     {isEdit && (
                         <button type="button" onClick={handleSubmit}
                             disabled={saving || submitting || formProducts.length === 0}
-                            className="flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition">
+                            className="flex items-center gap-2 rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-400 disabled:opacity-50 transition">
                             <Send size={14} />
                             {submitting ? 'Mengajukan…' : 'Ajukan ke SuperAdmin'}
                         </button>
@@ -469,7 +431,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
 
     useEffect(() => {
         setLoading(true);
-        api.get(`/quota-subsidi/${submissionId}`)
+        api.get(`/cost-rates/${submissionId}`)
             .then(setDetail)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
@@ -478,7 +440,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
     async function handleSubmit() {
         setSubmitting(true);
         try {
-            await api.post(`/quota-subsidi/${submissionId}/submit`);
+            await api.post(`/cost-rates/${submissionId}/submit`);
             onSubmitted?.();
         } catch (err) {
             setError(err.message || 'Gagal mengajukan.');
@@ -489,9 +451,11 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
 
     if (loading) return (
         <div className="flex items-center justify-center py-24">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
         </div>
     );
+
+    const grouped = groupItemsByProduct(detail?.items);
 
     return (
         <div className="space-y-6">
@@ -503,12 +467,12 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                 <div className="flex items-start justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold text-white">
-                            Quota Subsidi {formatPeriod(detail?.period)} — {detail?.region}
+                            Tarif Biaya — {detail?.region}
                         </h1>
                         <div className="mt-1 flex items-center gap-3">
                             <StatusChip value={detail?.status} />
                             <span className="text-sm text-slate-500">
-                                Diajukan oleh {detail?.submitted_by}
+                                PPh {detail?.pph_persen}% · Diajukan oleh {detail?.submitted_by}
                             </span>
                         </div>
                     </div>
@@ -519,7 +483,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                                 Edit
                             </button>
                             <button onClick={handleSubmit} disabled={submitting}
-                                className="flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition">
+                                className="flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-400 disabled:opacity-50 transition">
                                 <Send size={14} />
                                 {submitting ? 'Mengajukan…' : 'Ajukan ke SuperAdmin'}
                             </button>
@@ -527,14 +491,14 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                     )}
                     {userRole === 'AdminRegion' && detail?.status === 'rejected' && (
                         <button onClick={onEdit}
-                            className="rounded-xl bg-amber-400/20 border border-amber-400/30 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-400/30 transition">
+                            className="rounded-xl bg-teal-400/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300 hover:bg-teal-400/30 transition">
                             Revisi & Ajukan Ulang
                         </button>
                     )}
                     {userRole === 'AdminRegion' && (detail?.status === 'approved' || detail?.status === 'partially_approved') && (
                         <button onClick={onEdit}
                             className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition">
-                            Revisi Alokasi
+                            Revisi Tarif
                         </button>
                     )}
                 </div>
@@ -542,7 +506,6 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
 
             <ErrBanner msg={error} />
 
-            {/* Info card */}
             {(detail?.notes || detail?.review_note) && (
                 <div className="grid gap-3 sm:grid-cols-2">
                     {detail.notes && (
@@ -572,23 +535,10 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                 </div>
             )}
 
-            {/* Products */}
             <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-slate-200">Alokasi per Produk ({detail?.products?.length ?? 0} produk)</h2>
-                {(detail?.products ?? []).map(p => (
-                    <ProductRow key={p.id} p={{
-                        _uid: p.id,
-                        product_id:   p.product_id,
-                        product_code: p.product_code,
-                        product_name: p.product_name,
-                        total_qty_ton: p.total_qty_ton,
-                        kecamatan_allocations: (p.kecamatan_allocations ?? []).map(k => ({
-                            _uid:      k.id,
-                            kecamatan: k.kecamatan,
-                            qty_ton:   k.qty_ton,
-                            status:    k.status,
-                        })),
-                    }} kecamatanList={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
+                <h2 className="text-sm font-semibold text-slate-200">Tarif per Produk ({grouped.length} produk)</h2>
+                {grouped.map(p => (
+                    <ProductRateRow key={p._uid} p={p} kecamatanList={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
                 ))}
             </div>
         </div>
@@ -605,15 +555,12 @@ function ListView({ user, onNew, onEdit, onView }) {
     const [loading,    setLoading]    = useState(true);
     const [error,      setError]      = useState(null);
     const [page,       setPage]       = useState(1);
-    const [periodFilter, setPeriodFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
     const [activeFilters, setActiveFilters] = useState({});
 
     const fetch = useCallback(() => {
         setLoading(true);
-        api.get('/quota-subsidi', { page, ...activeFilters })
+        api.get('/cost-rates', { page, ...activeFilters })
             .then(setData)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
@@ -622,9 +569,9 @@ function ListView({ user, onNew, onEdit, onView }) {
     useEffect(() => { fetch(); }, [fetch]);
 
     async function handleDelete(id) {
-        if (!confirm('Hapus ajuan quota ini?')) return;
+        if (!confirm('Hapus ajuan tarif ini?')) return;
         try {
-            await api.del(`/quota-subsidi/${id}`);
+            await api.del(`/cost-rates/${id}`);
             fetch();
         } catch (err) {
             alert(err.message || 'Gagal menghapus.');
@@ -633,7 +580,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
     async function handleSubmitDirect(id) {
         try {
-            await api.post(`/quota-subsidi/${id}/submit`);
+            await api.post(`/cost-rates/${id}/submit`);
             fetch();
         } catch (err) {
             alert(err.message || 'Gagal mengajukan.');
@@ -641,14 +588,10 @@ function ListView({ user, onNew, onEdit, onView }) {
     }
 
     const columns = [
-        { key: 'period', label: 'Periode', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
+        { key: 'pph_persen',     label: 'PPh %', render: r => <span className="font-mono text-white">{r.pph_persen}%</span> },
+        { key: 'items_count',   label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
         { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
-        { key: 'products_count', label: 'Produk',   render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
-        {
-            key: 'created_at', label: 'Tanggal Diajukan',
-            render: r => <span className="text-xs text-slate-400">{r.created_at ? new Date(r.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>,
-        },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400 truncate block max-w-[140px]">{r.submitted_by}</span> },
         {
             key: 'review_note', label: 'Catatan Review',
@@ -691,61 +634,37 @@ function ListView({ user, onNew, onEdit, onView }) {
         <div className="space-y-6">
             <div className="flex items-start justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold text-white">Alokasi Quota Subsidi</h1>
+                    <h1 className="text-2xl font-semibold text-white">Alokasi Biaya</h1>
                     <p className="mt-1 text-sm text-slate-500">
                         {isAdminRegion
-                            ? `Kelola quota pupuk subsidi bulanan per kecamatan di region ${user.region}.`
-                            : 'Pantau quota pupuk subsidi dari semua region.'}
+                            ? `Tentukan harga satuan, biaya pengiriman per kecamatan, dan PPh region di ${user.region}.`
+                            : 'Pantau tarif biaya dari semua region.'}
                     </p>
                 </div>
                 {isAdminRegion && (
                     <button onClick={onNew}
-                        className="flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-300 transition">
+                        className="flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-400 transition">
                         <Plus size={15} /> Buat Ajuan Baru
                     </button>
                 )}
             </div>
 
-            <form onSubmit={e => {
-                e.preventDefault();
-                setPage(1);
-                setActiveFilters({
-                    ...(periodFilter ? { period: periodFilter } : {}),
-                    ...(statusFilter ? { status: statusFilter } : {}),
-                    ...(dateFrom ? { date_from: dateFrom } : {}),
-                    ...(dateTo ? { date_to: dateTo } : {}),
-                });
-            }}
-                className="flex flex-wrap items-center gap-3">
-                <input type="month" value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
-                    className="w-40 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
+            <form onSubmit={e => { e.preventDefault(); setPage(1); setActiveFilters(statusFilter ? { status: statusFilter } : {}); }}
+                className="flex flex-wrap gap-3">
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-teal-400/30 transition">
                     <option value="">Semua status</option>
                     <option value="draft">Draft</option>
                     <option value="submitted">Diajukan</option>
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
                 </select>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500">Dari</label>
-                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
-                </div>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500">Sampai</label>
-                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
-                </div>
                 <button type="submit"
                     className="rounded-xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm text-slate-300 hover:text-white transition">
                     Filter
                 </button>
-                {(periodFilter || statusFilter || dateFrom || dateTo) && (
-                    <button type="button" onClick={() => {
-                        setPeriodFilter(''); setStatusFilter(''); setDateFrom(''); setDateTo('');
-                        setActiveFilters({}); setPage(1);
-                    }}
+                {statusFilter && (
+                    <button type="button" onClick={() => { setStatusFilter(''); setActiveFilters({}); setPage(1); }}
                         className="rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-500 hover:text-white transition">
                         Reset
                     </button>
@@ -754,7 +673,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
             <ErrBanner msg={error} />
 
-            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Belum ada ajuan quota subsidi." />
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Belum ada ajuan tarif biaya." />
             <Pagination meta={data} onPageChange={setPage} />
         </div>
     );
@@ -762,7 +681,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function QuotaSubsidi({ user }) {
+export default function AlokasiBiaya({ user }) {
     const [view,   setView]   = useState('list'); // 'list' | 'form' | 'detail'
     const [editId, setEditId] = useState(null);   // null = new, number = edit
     const [viewId, setViewId] = useState(null);

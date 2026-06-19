@@ -16,10 +16,11 @@ function formatDate(val) {
 }
 
 const STATUS_CFG = {
-    submitted: { label: 'Diajukan', color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
-    approved:  { label: 'Disetujui', color: 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' },
-    rejected:  { label: 'Ditolak',  color: 'text-red-300 bg-red-400/10 border-red-400/20' },
-    draft:     { label: 'Draft',    color: 'text-slate-400 bg-slate-400/10 border-slate-400/20' },
+    submitted:           { label: 'Diajukan',          color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
+    approved:            { label: 'Disetujui',         color: 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' },
+    partially_approved:  { label: 'Sebagian Disetujui', color: 'text-orange-300 bg-orange-400/10 border-orange-400/20' },
+    rejected:            { label: 'Ditolak',           color: 'text-red-300 bg-red-400/10 border-red-400/20' },
+    draft:               { label: 'Draft',             color: 'text-slate-400 bg-slate-400/10 border-slate-400/20' },
 };
 
 function StatusChip({ value }) {
@@ -108,19 +109,154 @@ function ReviewModal({ title, summary, onClose, onApprove, onReject }) {
     );
 }
 
+// ─── Partial Review Modal (Quota Subsidi & Alokasi Biaya) ─────────────────────
+//
+// groups: [{ key, productName, productCode, lines: [{ id, label, detail }] }]
+
+function PartialReviewModal({ title, groups, onClose, onSubmit }) {
+    const [decisions, setDecisions] = useState(() => {
+        const map = {};
+        groups.forEach(g => g.lines.forEach(l => { map[l.id] = 'approved'; }));
+        return map;
+    });
+    const [note,   setNote]   = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error,  setError]  = useState(null);
+
+    const allIds = groups.flatMap(g => g.lines.map(l => l.id));
+
+    function setAll(value) {
+        setDecisions(allIds.reduce((acc, id) => ({ ...acc, [id]: value }), {}));
+    }
+
+    function setGroup(group, value) {
+        setDecisions(d => ({ ...d, ...group.lines.reduce((acc, l) => ({ ...acc, [l.id]: value }), {}) }));
+    }
+
+    function setLine(id, value) {
+        setDecisions(d => ({ ...d, [id]: value }));
+    }
+
+    async function handleSubmit() {
+        setSaving(true);
+        setError(null);
+        try {
+            await onSubmit(allIds.map(id => ({ id, status: decisions[id] })), note);
+            onClose();
+        } catch (err) {
+            setError(err.message || 'Gagal menyimpan keputusan.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
+                    <h2 className="text-base font-semibold text-white">{title}</h2>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAll('approved')}
+                            className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-400/20 transition">
+                            Setujui Semua
+                        </button>
+                        <button type="button" onClick={() => setAll('rejected')}
+                            className="rounded-lg border border-red-400/30 bg-red-400/10 px-2.5 py-1 text-xs text-red-300 hover:bg-red-400/20 transition">
+                            Tolak Semua
+                        </button>
+                    </div>
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto px-6 py-5 space-y-3">
+                    {error && (
+                        <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
+                    )}
+                    {groups.map(g => (
+                        <div key={g.key} className="rounded-xl border border-white/8 bg-white/3 overflow-hidden">
+                            <div className="flex items-center justify-between px-3 py-2 border-b border-white/8">
+                                <div>
+                                    <p className="text-sm font-medium text-white">{g.productName}</p>
+                                    <p className="text-xs text-slate-500 font-mono">{g.productCode}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button type="button" onClick={() => setGroup(g, 'approved')}
+                                        className="text-xs text-emerald-300 hover:underline">Setujui produk ini</button>
+                                    <button type="button" onClick={() => setGroup(g, 'rejected')}
+                                        className="text-xs text-red-300 hover:underline">Tolak produk ini</button>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-white/5">
+                                {g.lines.map(l => (
+                                    <div key={l.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                                        <div>
+                                            <p className="text-white">{l.label}</p>
+                                            {l.detail && <p className="text-xs text-slate-500">{l.detail}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <button type="button" onClick={() => setLine(l.id, 'approved')}
+                                                className={`rounded-lg px-2.5 py-1 text-xs border transition ${decisions[l.id] === 'approved' ? 'border-emerald-400/40 bg-emerald-400/20 text-emerald-300' : 'border-white/10 text-slate-500 hover:text-white'}`}>
+                                                Setuju
+                                            </button>
+                                            <button type="button" onClick={() => setLine(l.id, 'rejected')}
+                                                className={`rounded-lg px-2.5 py-1 text-xs border transition ${decisions[l.id] === 'rejected' ? 'border-red-400/40 bg-red-400/20 text-red-300' : 'border-white/10 text-slate-500 hover:text-white'}`}>
+                                                Tolak
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="space-y-1 pt-1">
+                        <label className="block text-xs font-medium text-slate-400">Catatan (opsional)</label>
+                        <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-amber-400/40 transition" />
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-white/8 px-6 py-4">
+                    <button type="button" onClick={onClose}
+                        className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
+                        Batal
+                    </button>
+                    <button type="button" onClick={handleSubmit} disabled={saving}
+                        className="rounded-xl bg-amber-400 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition">
+                        {saving ? 'Menyimpan…' : 'Simpan Keputusan'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Tab: Alokasi Biaya ───────────────────────────────────────────────────────
 
+function groupItemsByProduct(items) {
+    const map = new Map();
+    for (const it of (items ?? [])) {
+        if (!map.has(it.product_id)) {
+            map.set(it.product_id, { product_id: it.product_id, product_name: it.product_name, product_code: it.product_code, rates: [] });
+        }
+        map.get(it.product_id).rates.push(it);
+    }
+    return Array.from(map.values());
+}
+
 function TabAlokasibiaya() {
-    const [data,    setData]    = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error,   setError]   = useState(null);
-    const [page,    setPage]    = useState(1);
-    const [status,  setStatus]  = useState('submitted');
-    const [target,  setTarget]  = useState(null);
+    const [data,          setData]          = useState(null);
+    const [loading,       setLoading]       = useState(true);
+    const [error,         setError]         = useState(null);
+    const [page,          setPage]          = useState(1);
+    const [status,        setStatus]        = useState('submitted');
+    const [target,        setTarget]        = useState(null);
+    const [targetDetail,  setTargetDetail]  = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     const fetch = useCallback(() => {
         setLoading(true);
-        api.get('/order-cost-allocations', { page, ...(status ? { status } : {}) })
+        api.get('/cost-rates', { page, ...(status ? { status } : {}) })
             .then(setData)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
@@ -128,25 +264,49 @@ function TabAlokasibiaya() {
 
     useEffect(() => { fetch(); }, [fetch]);
 
+    async function openReview(row) {
+        setTarget(row);
+        setDetailLoading(true);
+        try {
+            const detail = await api.get(`/cost-rates/${row.id}`);
+            setTargetDetail(detail);
+        } catch {
+            setTargetDetail(null);
+        } finally {
+            setDetailLoading(false);
+        }
+    }
+
+    function closeReview() { setTarget(null); setTargetDetail(null); fetch(); }
+
     const columns = [
-        { key: 'poNumber',        label: 'PO Number',    render: r => <span className="font-mono text-xs">{r.poNumber || r.order_id}</span> },
-        { key: 'region',          label: 'Region' },
-        { key: 'kecamatan',       label: 'Kecamatan',    render: r => r.kecamatan || '—' },
-        { key: 'shipping_cost_per_kg', label: 'Ongkir/kg', render: r => formatRupiah(r.shipping_cost_per_kg) },
-        { key: 'pph_amount',      label: 'PPH',          render: r => formatRupiah(r.pph_amount) },
-        { key: 'total_allocated', label: 'Total',        render: r => <span className="font-semibold text-teal-300">{formatRupiah(r.total_allocated)}</span> },
-        { key: 'allocated_by',    label: 'Diajukan Oleh',render: r => <span className="text-xs text-slate-400">{r.allocated_by}</span> },
-        { key: 'status',          label: 'Status',       render: r => <StatusChip value={r.status} /> },
+        { key: 'region',       label: 'Region' },
+        { key: 'pph_persen',   label: 'PPh %', render: r => <span className="font-mono text-white">{r.pph_persen}%</span> },
+        { key: 'items_count',  label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
+        { key: 'submitted_by', label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
+        { key: 'status',       label: 'Status', render: r => <StatusChip value={r.status} /> },
+        { key: 'review_note',  label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
         {
             key: '_act', label: '',
             render: r => r.status === 'submitted' ? (
-                <button onClick={() => setTarget(r)}
+                <button onClick={() => openReview(r)}
                     className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20 transition">
                     Tinjau
                 </button>
             ) : null,
         },
     ];
+
+    const reviewGroups = targetDetail ? groupItemsByProduct(targetDetail.items).map(p => ({
+        key:         p.product_id,
+        productName: p.product_name,
+        productCode: p.product_code,
+        lines: p.rates.map(r => ({
+            id:     r.id,
+            label:  r.kecamatan,
+            detail: `${formatRupiah(r.harga_satuan)}/kg · ongkir ${formatRupiah(r.biaya_pengiriman)}/kg`,
+        })),
+    })) : [];
 
     return (
         <div className="space-y-4">
@@ -162,25 +322,20 @@ function TabAlokasibiaya() {
 
             {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>}
 
-            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan alokasi biaya." />
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan tarif biaya." />
             <Pagination meta={data} onPageChange={setPage} />
 
-            {target && (
-                <ReviewModal
-                    title="Tinjau Alokasi Biaya"
-                    summary={
-                        <div className="space-y-1 text-xs">
-                            <p><span className="text-slate-500">Order:</span> {target.poNumber || target.order_id}</p>
-                            <p><span className="text-slate-500">Region:</span> {target.region} &nbsp; <span className="text-slate-500">Kecamatan:</span> {target.kecamatan || '—'}</p>
-                            <p><span className="text-slate-500">Ongkir/kg:</span> {formatRupiah(target.shipping_cost_per_kg)}</p>
-                            <p><span className="text-slate-500">PPH:</span> {formatRupiah(target.pph_amount)}</p>
-                            <p><span className="text-slate-500">Total:</span> <strong className="text-teal-300">{formatRupiah(target.total_allocated)}</strong></p>
-                            {target.notes && <p><span className="text-slate-500">Catatan:</span> {target.notes}</p>}
-                        </div>
-                    }
-                    onClose={() => { setTarget(null); fetch(); }}
-                    onApprove={note => api.post(`/order-cost-allocations/${target.id}/approve`, { review_note: note })}
-                    onReject={note  => api.post(`/order-cost-allocations/${target.id}/reject`,  { review_note: note })}
+            {target && detailLoading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                </div>
+            )}
+            {target && targetDetail && (
+                <PartialReviewModal
+                    title={`Tinjau Tarif Biaya — ${target.region}`}
+                    groups={reviewGroups}
+                    onClose={closeReview}
+                    onSubmit={(decisions, note) => api.post(`/cost-rates/${target.id}/review`, { decisions, review_note: note })}
                 />
             )}
         </div>
@@ -228,9 +383,20 @@ function TabQuota() {
         return v == null ? '—' : `${Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
     }
 
+    const MONTHS_ID = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+
+    function formatPeriod(period) {
+        if (!period) return '—';
+        const [y, m] = period.split('-');
+        return `${MONTHS_ID[parseInt(m, 10) - 1] ?? m} ${y}`;
+    }
+
     const columns = [
         { key: 'region',         label: 'Region' },
-        { key: 'year',           label: 'Tahun',  render: r => <span className="font-semibold text-white">{r.year}</span> },
+        { key: 'period',         label: 'Periode', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
         { key: 'products_count', label: 'Produk', render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
         { key: 'status',         label: 'Status', render: r => <StatusChip value={r.status} /> },
@@ -246,43 +412,16 @@ function TabQuota() {
         },
     ];
 
-    const detailSummary = targetDetail ? (
-        <div className="space-y-3 text-xs">
-            <div className="space-y-1">
-                <p><span className="text-slate-500">Region:</span> <strong className="text-white">{targetDetail.region}</strong></p>
-                <p><span className="text-slate-500">Tahun:</span> {targetDetail.year}</p>
-                {targetDetail.notes && <p><span className="text-slate-500">Catatan:</span> {targetDetail.notes}</p>}
-            </div>
-            <div className="border-t border-white/8 pt-2 space-y-2">
-                <p className="font-medium text-slate-400">Rincian Produk ({targetDetail.products?.length ?? 0} produk)</p>
-                {(targetDetail.products ?? []).map(p => (
-                    <div key={p.id} className="rounded-lg border border-white/8 bg-white/3 px-3 py-2 space-y-1">
-                        <div className="flex justify-between">
-                            <span className="font-medium text-white">{p.product_name}</span>
-                            <span className="text-amber-300 font-mono">{fTon(p.total_qty_ton)}</span>
-                        </div>
-                        <div className="pl-2 space-y-0.5 text-slate-400">
-                            {(p.kecamatan_allocations ?? []).map(k => (
-                                <div key={k.id} className="flex justify-between">
-                                    <span>{k.kecamatan}</span>
-                                    <span className="font-mono">{fTon(k.qty_ton)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    ) : detailLoading ? (
-        <div className="flex justify-center py-4">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-        </div>
-    ) : (
-        <div className="text-xs text-slate-400">
-            <p><span className="text-slate-500">Region:</span> {target?.region}</p>
-            <p><span className="text-slate-500">Tahun:</span> {target?.year}</p>
-        </div>
-    );
+    const reviewGroups = targetDetail ? (targetDetail.products ?? []).map(p => ({
+        key:         p.id,
+        productName: p.product_name,
+        productCode: p.product_code,
+        lines: (p.kecamatan_allocations ?? []).map(k => ({
+            id:     k.id,
+            label:  k.kecamatan,
+            detail: fTon(k.qty_ton),
+        })),
+    })) : [];
 
     return (
         <div className="space-y-4">
@@ -301,13 +440,17 @@ function TabQuota() {
             <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan quota subsidi." />
             <Pagination meta={data} onPageChange={setPage} />
 
-            {target && (
-                <ReviewModal
-                    title={`Tinjau Quota Subsidi — ${target.region} ${target.year}`}
-                    summary={detailSummary}
+            {target && detailLoading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                </div>
+            )}
+            {target && targetDetail && (
+                <PartialReviewModal
+                    title={`Tinjau Quota Subsidi — ${target.region} ${formatPeriod(target.period)}`}
+                    groups={reviewGroups}
                     onClose={closeReview}
-                    onApprove={note => api.post(`/quota-subsidi/${target.id}/approve`, { review_note: note })}
-                    onReject={note  => api.post(`/quota-subsidi/${target.id}/reject`,  { review_note: note })}
+                    onSubmit={(decisions, note) => api.post(`/quota-subsidi/${target.id}/review`, { decisions, review_note: note })}
                 />
             )}
         </div>
