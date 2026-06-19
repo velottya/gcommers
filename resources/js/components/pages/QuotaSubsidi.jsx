@@ -29,11 +29,11 @@ let _uid = 0;
 const nextUid = () => ++_uid;
 
 function emptyProduct() {
-    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', total_qty_ton: '', kiosk_allocations: [] };
+    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', total_qty_ton: '', kecamatan_allocations: [] };
 }
 
 function emptyAlloc() {
-    return { _uid: nextUid(), kiosk_id: '', kiosk_name: '', kiosk_email: '', qty_ton: '' };
+    return { _uid: nextUid(), kecamatan: '', qty_ton: '' };
 }
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
@@ -69,48 +69,40 @@ function ErrBanner({ msg }) {
 
 // ─── ProductRow (dalam form edit) ─────────────────────────────────────────────
 
-function ProductRow({ p, kiosks, onChange, onRemove, readOnly }) {
+function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
     const [open, setOpen] = useState(true);
 
-    const allocated = p.kiosk_allocations.reduce((s, k) => s + (parseFloat(k.qty_ton) || 0), 0);
+    const allocated = p.kecamatan_allocations.reduce((s, k) => s + (parseFloat(k.qty_ton) || 0), 0);
     const total     = parseFloat(p.total_qty_ton) || 0;
     const remaining = total - allocated;
     const overAllocated = remaining < -0.001;
 
-    // Kiosk yang belum dialokasikan untuk produk ini
-    const usedIds      = new Set(p.kiosk_allocations.map(k => String(k.kiosk_id)));
-    const availKiosks  = kiosks.filter(k => !usedIds.has(String(k.id)));
+    // Kecamatan yang belum dialokasikan untuk produk ini
+    const usedKecamatan = new Set(p.kecamatan_allocations.map(k => k.kecamatan));
+    const availKecamatan = kecamatanList.filter(k => !usedKecamatan.has(k));
 
-    function addKiosk() {
-        if (!availKiosks.length) return;
-        const first = availKiosks[0];
+    function addKecamatan() {
+        if (!availKecamatan.length) return;
         onChange({
             ...p,
-            kiosk_allocations: [
-                ...p.kiosk_allocations,
-                { ...emptyAlloc(), kiosk_id: first.id, kiosk_name: first.name, kiosk_email: first.email },
+            kecamatan_allocations: [
+                ...p.kecamatan_allocations,
+                { ...emptyAlloc(), kecamatan: availKecamatan[0] },
             ],
         });
     }
 
-    function updateKiosk(uid, field, value) {
+    function updateKecamatan(uid, field, value) {
         onChange({
             ...p,
-            kiosk_allocations: p.kiosk_allocations.map(k => {
-                if (k._uid !== uid) return k;
-                const updated = { ...k, [field]: value };
-                // Jika ganti kiosk, isi nama & email otomatis
-                if (field === 'kiosk_id') {
-                    const found = kiosks.find(kk => String(kk.id) === String(value));
-                    if (found) { updated.kiosk_name = found.name; updated.kiosk_email = found.email; }
-                }
-                return updated;
-            }),
+            kecamatan_allocations: p.kecamatan_allocations.map(k =>
+                k._uid === uid ? { ...k, [field]: value } : k
+            ),
         });
     }
 
-    function removeKiosk(uid) {
-        onChange({ ...p, kiosk_allocations: p.kiosk_allocations.filter(k => k._uid !== uid) });
+    function removeKecamatan(uid) {
+        onChange({ ...p, kecamatan_allocations: p.kecamatan_allocations.filter(k => k._uid !== uid) });
     }
 
     return (
@@ -143,11 +135,11 @@ function ProductRow({ p, kiosks, onChange, onRemove, readOnly }) {
                 )}
             </div>
 
-            {/* Kiosk allocations */}
+            {/* Kecamatan allocations */}
             {open && (
                 <div className="border-t border-white/8 px-4 pb-4 pt-3 space-y-3">
                     <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-slate-400">Alokasi per Kiosk</p>
+                        <p className="text-xs font-medium text-slate-400">Alokasi per Kecamatan</p>
                         {!readOnly && (
                             <div className="flex items-center gap-3">
                                 {total > 0 && (
@@ -156,45 +148,40 @@ function ProductRow({ p, kiosks, onChange, onRemove, readOnly }) {
                                         {!overAllocated && remaining > 0.001 && ` · sisa ${fTon(remaining)}`}
                                     </span>
                                 )}
-                                <button type="button" onClick={addKiosk} disabled={!availKiosks.length}
+                                <button type="button" onClick={addKecamatan} disabled={!availKecamatan.length}
                                     className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                                    <Plus size={11} /> Tambah Kiosk
+                                    <Plus size={11} /> Tambah Kecamatan
                                 </button>
                             </div>
                         )}
                     </div>
 
-                    {p.kiosk_allocations.length === 0 ? (
-                        <p className="text-xs text-slate-600 italic py-2">Belum ada kiosk yang dialokasikan.</p>
+                    {p.kecamatan_allocations.length === 0 ? (
+                        <p className="text-xs text-slate-600 italic py-2">Belum ada kecamatan yang dialokasikan.</p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="text-xs text-slate-500 border-b border-white/8">
-                                        <th className="text-left pb-2 font-medium">Kiosk</th>
+                                        <th className="text-left pb-2 font-medium">Kecamatan</th>
                                         <th className="text-left pb-2 font-medium w-36">Qty (TON)</th>
                                         {!readOnly && <th className="w-8" />}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {p.kiosk_allocations.map(k => (
+                                    {p.kecamatan_allocations.map(k => (
                                         <tr key={k._uid}>
                                             <td className="py-2 pr-3">
                                                 {readOnly ? (
-                                                    <div>
-                                                        <p className="text-white">{k.kiosk_name}</p>
-                                                        <p className="text-xs text-slate-500">{k.kiosk_email}</p>
-                                                    </div>
+                                                    <p className="text-white">{k.kecamatan}</p>
                                                 ) : (
-                                                    <Sel value={k.kiosk_id}
-                                                        onChange={e => updateKiosk(k._uid, 'kiosk_id', e.target.value)}>
-                                                        {/* Option untuk kiosk ini sendiri */}
-                                                        {kiosks.filter(kk =>
-                                                            String(kk.id) === String(k.kiosk_id) ||
-                                                            !usedIds.has(String(kk.id)) ||
-                                                            String(kk.id) === String(k.kiosk_id)
+                                                    <Sel value={k.kecamatan}
+                                                        onChange={e => updateKecamatan(k._uid, 'kecamatan', e.target.value)}>
+                                                        {/* Opsi untuk kecamatan ini sendiri + yang belum terpakai */}
+                                                        {kecamatanList.filter(kk =>
+                                                            kk === k.kecamatan || !usedKecamatan.has(kk)
                                                         ).map(kk => (
-                                                            <option key={kk.id} value={kk.id}>{kk.name}</option>
+                                                            <option key={kk} value={kk}>{kk}</option>
                                                         ))}
                                                     </Sel>
                                                 )}
@@ -204,12 +191,12 @@ function ProductRow({ p, kiosks, onChange, onRemove, readOnly }) {
                                                     <span className="font-mono text-white">{fTon(k.qty_ton)}</span>
                                                 ) : (
                                                     <Inp type="number" min="0.01" step="0.01" value={k.qty_ton}
-                                                        onChange={e => updateKiosk(k._uid, 'qty_ton', e.target.value)} />
+                                                        onChange={e => updateKecamatan(k._uid, 'qty_ton', e.target.value)} />
                                                 )}
                                             </td>
                                             {!readOnly && (
                                                 <td className="py-2">
-                                                    <button type="button" onClick={() => removeKiosk(k._uid)}
+                                                    <button type="button" onClick={() => removeKecamatan(k._uid)}
                                                         className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
                                                         <Trash2 size={13} />
                                                     </button>
@@ -234,7 +221,7 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
     const [formNotes,    setFormNotes]    = useState('');
     const [formProducts, setFormProducts] = useState([]);
     const [products,     setProducts]     = useState([]);
-    const [kiosks,       setKiosks]       = useState([]);
+    const [kecamatanList, setKecamatanList] = useState([]);
     const [refLoading,   setRefLoading]   = useState(true);
     const [saving,       setSaving]       = useState(false);
     const [submitting,   setSubmitting]   = useState(false);
@@ -250,14 +237,14 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
         setRefLoading(true);
         const tasks = [
             api.get('/products', { status: 'Aktif', per_page: 100 }),
-            api.get('/quota-subsidi/kiosks'),
+            api.get('/quota-subsidi/kecamatan'),
         ];
         if (editId) tasks.push(api.get(`/quota-subsidi/${editId}`));
 
         Promise.all(tasks)
-            .then(([prodRes, kioskRes, detailRes]) => {
+            .then(([prodRes, kecamatanRes, detailRes]) => {
                 setProducts(Array.isArray(prodRes) ? prodRes : (prodRes.data ?? []));
-                setKiosks(kioskRes ?? []);
+                setKecamatanList(kecamatanRes ?? []);
 
                 if (detailRes) {
                     setFormYear(detailRes.year ?? new Date().getFullYear());
@@ -268,12 +255,10 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                         product_code: p.product_code,
                         product_name: p.product_name,
                         total_qty_ton: String(p.total_qty_ton),
-                        kiosk_allocations: (p.kiosk_allocations ?? []).map(k => ({
-                            _uid:        nextUid(),
-                            kiosk_id:    k.kiosk_id,
-                            kiosk_name:  k.kiosk_name,
-                            kiosk_email: k.kiosk_email,
-                            qty_ton:     String(k.qty_ton),
+                        kecamatan_allocations: (p.kecamatan_allocations ?? []).map(k => ({
+                            _uid:      nextUid(),
+                            kecamatan: k.kecamatan,
+                            qty_ton:   String(k.qty_ton),
                         })),
                     })));
                 }
@@ -309,13 +294,11 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
             year:  formYear,
             notes: formNotes || null,
             products: formProducts.map(p => ({
-                product_id:       p.product_id,
-                total_qty_ton:    parseFloat(p.total_qty_ton),
-                kiosk_allocations: p.kiosk_allocations.map(k => ({
-                    kiosk_id:    k.kiosk_id,
-                    kiosk_name:  k.kiosk_name,
-                    kiosk_email: k.kiosk_email,
-                    qty_ton:     parseFloat(k.qty_ton),
+                product_id:            p.product_id,
+                total_qty_ton:         parseFloat(p.total_qty_ton),
+                kecamatan_allocations: p.kecamatan_allocations.map(k => ({
+                    kecamatan: k.kecamatan,
+                    qty_ton:   parseFloat(k.qty_ton),
                 })),
             })),
         };
@@ -419,7 +402,7 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     ) : (
                         <div className="space-y-3">
                             {formProducts.map(p => (
-                                <ProductRow key={p._uid} p={p} kiosks={kiosks}
+                                <ProductRow key={p._uid} p={p} kecamatanList={kecamatanList}
                                     onChange={newP => updateProduct(p._uid, newP)}
                                     onRemove={() => removeProduct(p._uid)}
                                     readOnly={false} />
@@ -565,14 +548,12 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                         product_code: p.product_code,
                         product_name: p.product_name,
                         total_qty_ton: p.total_qty_ton,
-                        kiosk_allocations: (p.kiosk_allocations ?? []).map(k => ({
-                            _uid:        k.id,
-                            kiosk_id:    k.kiosk_id,
-                            kiosk_name:  k.kiosk_name,
-                            kiosk_email: k.kiosk_email,
-                            qty_ton:     k.qty_ton,
+                        kecamatan_allocations: (p.kecamatan_allocations ?? []).map(k => ({
+                            _uid:      k.id,
+                            kecamatan: k.kecamatan,
+                            qty_ton:   k.qty_ton,
                         })),
-                    }} kiosks={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
+                    }} kecamatanList={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
                 ))}
             </div>
         </div>
@@ -591,6 +572,8 @@ function ListView({ user, onNew, onEdit, onView }) {
     const [page,       setPage]       = useState(1);
     const [yearFilter, setYearFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [activeFilters, setActiveFilters] = useState({});
 
     const fetch = useCallback(() => {
@@ -627,6 +610,10 @@ function ListView({ user, onNew, onEdit, onView }) {
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
         { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
         { key: 'products_count', label: 'Produk',   render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
+        {
+            key: 'created_at', label: 'Tanggal Diajukan',
+            render: r => <span className="text-xs text-slate-400">{r.created_at ? new Date(r.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>,
+        },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400 truncate block max-w-[140px]">{r.submitted_by}</span> },
         {
             key: 'review_note', label: 'Catatan Review',
@@ -672,7 +659,7 @@ function ListView({ user, onNew, onEdit, onView }) {
                     <h1 className="text-2xl font-semibold text-white">Alokasi Quota Subsidi</h1>
                     <p className="mt-1 text-sm text-slate-500">
                         {isAdminRegion
-                            ? `Kelola quota pupuk subsidi tahunan per kiosk di region ${user.region}.`
+                            ? `Kelola quota pupuk subsidi tahunan per kecamatan di region ${user.region}.`
                             : 'Pantau quota pupuk subsidi dari semua region.'}
                     </p>
                 </div>
@@ -684,8 +671,17 @@ function ListView({ user, onNew, onEdit, onView }) {
                 )}
             </div>
 
-            <form onSubmit={e => { e.preventDefault(); setPage(1); setActiveFilters({ ...(yearFilter ? { year: yearFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}) }); }}
-                className="flex flex-wrap gap-3">
+            <form onSubmit={e => {
+                e.preventDefault();
+                setPage(1);
+                setActiveFilters({
+                    ...(yearFilter ? { year: yearFilter } : {}),
+                    ...(statusFilter ? { status: statusFilter } : {}),
+                    ...(dateFrom ? { date_from: dateFrom } : {}),
+                    ...(dateTo ? { date_to: dateTo } : {}),
+                });
+            }}
+                className="flex flex-wrap items-center gap-3">
                 <input type="number" placeholder="Tahun" value={yearFilter} onChange={e => setYearFilter(e.target.value)} min="2024" max="2100"
                     className="w-28 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
@@ -696,12 +692,25 @@ function ListView({ user, onNew, onEdit, onView }) {
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
                 </select>
+                <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Dari</label>
+                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
+                </div>
+                <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Sampai</label>
+                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
+                </div>
                 <button type="submit"
                     className="rounded-xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm text-slate-300 hover:text-white transition">
                     Filter
                 </button>
-                {(yearFilter || statusFilter) && (
-                    <button type="button" onClick={() => { setYearFilter(''); setStatusFilter(''); setActiveFilters({}); setPage(1); }}
+                {(yearFilter || statusFilter || dateFrom || dateTo) && (
+                    <button type="button" onClick={() => {
+                        setYearFilter(''); setStatusFilter(''); setDateFrom(''); setDateTo('');
+                        setActiveFilters({}); setPage(1);
+                    }}
                         className="rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-500 hover:text-white transition">
                         Reset
                     </button>

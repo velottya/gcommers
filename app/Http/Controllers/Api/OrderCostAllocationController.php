@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderCostAllocation;
 use App\Models\Setting;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -54,17 +55,51 @@ class OrderCostAllocationController extends Controller
         return response()->json($allocation);
     }
 
+    /**
+     * Konteks order untuk mengisi bagian read-only form alokasi:
+     * nomor PO, kecamatan kiosk tujuan, dan rincian item produk.
+     */
+    public function context(string $orderId)
+    {
+        $user = Auth::user();
+
+        $order = Order::where('Id', $orderId)
+            ->when(
+                $user->Role === 'AdminRegion' && $user->Region,
+                fn ($q) => $q->where('Vendor', trim($user->Region))
+            )
+            ->firstOrFail();
+
+        $order->load('items');
+
+        $kecamatan = User::where('Email', $order->UserEmail)->where('Role', 'kiosk')->value('Kecamatan');
+
+        $items = $order->items->map(fn ($i) => [
+            'productName' => $i->productName ?? $i->productCode ?? '—',
+            'quantity'    => (float) $i->quantity,
+            'price'       => (float) $i->price,
+            'subtotal'    => (float) $i->subtotal,
+        ]);
+
+        return response()->json([
+            'poNumber'    => $order->PoNumber,
+            'userEmail'   => $order->UserEmail,
+            'kecamatan'   => $kecamatan,
+            'items'       => $items,
+            'totalQtyTon' => (float) $order->items->sum('quantity'),
+        ]);
+    }
+
     public function storeOrUpdate(Request $request)
     {
         $user = Auth::user();
         abort_unless($user->Role === 'AdminRegion', 403, 'Akses tidak diizinkan.');
 
         $data = $request->validate([
-            'order_id'      => 'required|string',
-            'shipping_cost' => 'required|numeric|min:0',
-            'pph_amount'    => 'required|numeric|min:0',
-            'ppn_amount'    => 'required|numeric|min:0',
-            'notes'         => 'nullable|string|max:1000',
+            'order_id'             => 'required|string',
+            'shipping_cost_per_kg' => 'required|numeric|min:0',
+            'pph_amount'           => 'required|numeric|min:0',
+            'notes'                => 'nullable|string|max:1000',
         ]);
 
         $region = trim($user->Region ?? '');
@@ -74,21 +109,25 @@ class OrderCostAllocationController extends Controller
             ->when($region, fn ($q) => $q->where('Vendor', $region))
             ->firstOrFail();
 
-        $total = (float) $data['shipping_cost']
-            + (float) $data['pph_amount']
-            + (float) $data['ppn_amount'];
+        $order->load('items');
+        $totalQtyTon = (float) $order->items->sum('quantity');
+
+        $kecamatan = User::where('Email', $order->UserEmail)->where('Role', 'kiosk')->value('Kecamatan');
+
+        $shippingTotal = $totalQtyTon * 1000 * (float) $data['shipping_cost_per_kg'];
+        $total         = $shippingTotal + (float) $data['pph_amount'];
 
         $allocation = OrderCostAllocation::updateOrCreate(
             ['order_id' => (string) $order->Id],
             [
-                'region'          => $region,
-                'shipping_cost'   => $data['shipping_cost'],
-                'pph_amount'      => $data['pph_amount'],
-                'ppn_amount'      => $data['ppn_amount'],
-                'total_allocated' => $total,
-                'notes'           => $data['notes'] ?? null,
-                'allocated_by'    => $user->Email,
-                'status'          => 'draft',
+                'region'               => $region,
+                'kecamatan'            => $kecamatan,
+                'shipping_cost_per_kg' => $data['shipping_cost_per_kg'],
+                'pph_amount'           => $data['pph_amount'],
+                'total_allocated'      => $total,
+                'notes'                => $data['notes'] ?? null,
+                'allocated_by'         => $user->Email,
+                'status'               => 'draft',
             ]
         );
 
@@ -160,7 +199,6 @@ class OrderCostAllocationController extends Controller
             'biaya_pengiriman_dasar'  => (float) ($map['biaya_pengiriman_dasar']['value']  ?? 0),
             'biaya_pengiriman_per_km' => (float) ($map['biaya_pengiriman_per_km']['value'] ?? 0),
             'pph_persen'              => (float) ($map['pph_persen']['value']              ?? 0),
-            'ppn_persen'              => (float) ($map['ppn_persen']['value']              ?? 11),
         ]);
     }
 

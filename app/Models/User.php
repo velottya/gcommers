@@ -73,6 +73,7 @@ class User extends Authenticatable
         'DisplayName',
         'Role',
         'Region',
+        'Kecamatan',
         'Type',
         'KioskName',
         'CompanyName',

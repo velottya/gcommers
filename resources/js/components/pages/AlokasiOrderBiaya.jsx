@@ -51,20 +51,29 @@ function Inp({ ...props }) {
 }
 
 function AllokasiModal({ order, defaults, existing, onClose, onSaved }) {
+    const [context, setContext]     = useState(null);
+    const [ctxLoading, setCtxLoading] = useState(true);
+    const [ctxError, setCtxError]   = useState(null);
     const [form,   setForm]   = useState({
-        shipping_cost: existing?.shipping_cost ?? defaults?.biaya_pengiriman_dasar ?? '',
-        pph_amount:    existing?.pph_amount    ?? '',
-        ppn_amount:    existing?.ppn_amount    ?? '',
-        notes:         existing?.notes         ?? '',
+        shipping_cost_per_kg: existing?.shipping_cost_per_kg ?? '',
+        pph_amount:           existing?.pph_amount           ?? '',
+        notes:                existing?.notes                ?? '',
     });
     const [saving, setSaving] = useState(false);
     const [error,  setError]  = useState(null);
 
+    useEffect(() => {
+        api.get(`/order-cost-allocations/context/${order.id}`)
+            .then(setContext)
+            .catch(err => setCtxError(err.message || 'Gagal memuat data order.'))
+            .finally(() => setCtxLoading(false));
+    }, [order.id]);
+
     const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-    const total = (parseFloat(form.shipping_cost) || 0)
-        + (parseFloat(form.pph_amount) || 0)
-        + (parseFloat(form.ppn_amount) || 0);
+    const totalQtyTon  = context?.totalQtyTon ?? 0;
+    const shippingTotal = totalQtyTon * 1000 * (parseFloat(form.shipping_cost_per_kg) || 0);
+    const total = shippingTotal + (parseFloat(form.pph_amount) || 0);
 
     async function handleSave(submitAfter = false) {
         setSaving(true);
@@ -93,39 +102,71 @@ function AllokasiModal({ order, defaults, existing, onClose, onSaved }) {
                 <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
                     <h2 className="flex items-center gap-2 text-base font-semibold text-white">
                         <Calculator size={16} className="text-teal-400" />
-                        Alokasi Biaya Pesanan
+                        Alokasi Biaya Pengiriman
                     </h2>
                     <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:text-white transition"><X size={18} /></button>
                 </div>
 
-                <div className="px-6 py-5 space-y-4">
-                    <div className="rounded-xl border border-white/6 bg-white/3 p-3 text-sm">
+                <div className="max-h-[75vh] overflow-y-auto px-6 py-5 space-y-4">
+                    <div className="rounded-xl border border-white/6 bg-white/3 p-3 text-sm space-y-1">
                         <p className="font-mono text-white">{order.poNumber}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{order.userEmail}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                            Subtotal: {formatRupiah(order.subTotal)} &nbsp;|&nbsp;
-                            Ongkir sistem: {formatRupiah(order.shippingAmount)}
+                        <p className="text-xs text-slate-400">{order.userEmail}</p>
+                        <p className="text-xs text-slate-500">
+                            Kecamatan: <span className="text-slate-300">{ctxLoading ? '…' : (context?.kecamatan || '—')}</span>
                         </p>
                     </div>
 
-                    {error && (
-                        <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
+                    {(error || ctxError) && (
+                        <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error || ctxError}</div>
                     )}
 
-                    <div className="grid grid-cols-3 gap-3">
-                        <Field label="Biaya Pengiriman (Rp)">
-                            <Inp type="number" min="0" step="1" value={form.shipping_cost} onChange={set('shipping_cost')}
+                    {/* Rincian produk (read-only, dari item order) */}
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-slate-400">Rincian Produk</p>
+                        {ctxLoading ? (
+                            <p className="text-xs text-slate-600 italic">Memuat…</p>
+                        ) : (context?.items?.length ? (
+                            <div className="overflow-x-auto rounded-xl border border-white/6">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-white/8 bg-white/3">
+                                            {['Produk', 'Qty (TON)', 'Harga'].map(h => (
+                                                <th key={h} className="px-3 py-2 text-left text-xs font-medium text-slate-500">{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {context.items.map((it, idx) => (
+                                            <tr key={idx}>
+                                                <td className="px-3 py-2 text-slate-200">{it.productName}</td>
+                                                <td className="px-3 py-2 text-slate-300">{it.quantity}</td>
+                                                <td className="px-3 py-2 text-slate-300">{formatRupiah(it.price)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-600 italic">Tidak ada data item produk.</p>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="Biaya Pengiriman per Kilo (Rp/kg)">
+                            <Inp type="number" min="0" step="1" value={form.shipping_cost_per_kg} onChange={set('shipping_cost_per_kg')}
                                 placeholder="0" />
                         </Field>
                         <Field label="PPH (Rp)">
                             <Inp type="number" min="0" step="1" value={form.pph_amount} onChange={set('pph_amount')}
                                 placeholder="0" />
                         </Field>
-                        <Field label="PPN (Rp)">
-                            <Inp type="number" min="0" step="1" value={form.ppn_amount} onChange={set('ppn_amount')}
-                                placeholder="0" />
-                        </Field>
                     </div>
+
+                    {totalQtyTon > 0 && (
+                        <p className="text-xs text-slate-600">
+                            Ongkir = {totalQtyTon} TON × 1.000 kg × {formatRupiah(form.shipping_cost_per_kg || 0)}/kg = {formatRupiah(shippingTotal)}
+                        </p>
+                    )}
 
                     <div className="flex items-center justify-between rounded-xl border border-teal-400/15 bg-teal-400/5 px-4 py-3">
                         <span className="text-sm text-slate-400">Total Alokasi</span>
@@ -144,8 +185,7 @@ function AllokasiModal({ order, defaults, existing, onClose, onSaved }) {
 
                     {defaults && (
                         <p className="text-xs text-slate-600">
-                            Tarif referensi: Pengiriman Rp{defaults.biaya_pengiriman_dasar?.toLocaleString('id-ID')},
-                            PPH {defaults.pph_persen}%, PPN {defaults.ppn_persen}%
+                            Tarif referensi PPH: {defaults.pph_persen}%
                         </p>
                     )}
                 </div>
@@ -275,7 +315,7 @@ export default function AlokasiOrderBiaya({ user }) {
             <div>
                 <h1 className="text-2xl font-semibold text-white">Alokasi Biaya Pengiriman</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Tentukan biaya pengiriman, PPH, dan PPN untuk setiap pesanan, lalu ajukan ke SuperAdmin.
+                    Tentukan biaya pengiriman per kilo dan PPH untuk setiap pesanan, lalu ajukan ke SuperAdmin.
                 </p>
             </div>
 

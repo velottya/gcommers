@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use App\Models\SubsidyQuotaKioskAllocation;
+use App\Models\SubsidyQuotaKecamatanAllocation;
 use App\Models\SubsidyQuotaProduct;
 use App\Models\SubsidyQuotaSubmission;
 use App\Models\User;
@@ -37,15 +37,23 @@ class SubsidyQuotaController extends Controller
             $query->where('year', $request->year);
         }
 
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
         return response()->json($query->paginate(20));
     }
 
-    // ── Detail satu ajuan (dengan produk + alokasi kiosk) ────────────────────
+    // ── Detail satu ajuan (dengan produk + alokasi kecamatan) ────────────────
 
     public function show(int $id)
     {
         $user       = Auth::user();
-        $query      = SubsidyQuotaSubmission::with('products.kioskAllocations');
+        $query      = SubsidyQuotaSubmission::with('products.kecamatanAllocations');
 
         if ($user->Role === 'AdminRegion') {
             $query->where('region', $user->Region);
@@ -54,24 +62,22 @@ class SubsidyQuotaController extends Controller
         return response()->json($query->findOrFail($id));
     }
 
-    // ── Kiosk list untuk form alokasi (tanpa pagination) ─────────────────────
+    // ── Daftar kecamatan untuk form alokasi (tanpa pagination) ───────────────
 
-    public function kiosks(Request $request)
+    public function kecamatanList()
     {
         $user = Auth::user();
         abort_unless($user->Role === 'AdminRegion', 403);
 
-        $kiosks = User::where('Role', 'kiosk')
+        $kecamatan = User::where('Role', 'kiosk')
                       ->where('Region', $user->Region)
-                      ->orderBy('KioskName')
-                      ->get(['Id', 'KioskName', 'Email'])
-                      ->map(fn ($u) => [
-                          'id'    => $u->Id,
-                          'name'  => $u->KioskName ?? $u->Email,
-                          'email' => $u->Email,
-                      ]);
+                      ->whereNotNull('Kecamatan')
+                      ->where('Kecamatan', '!=', '')
+                      ->distinct()
+                      ->orderBy('Kecamatan')
+                      ->pluck('Kecamatan');
 
-        return response()->json($kiosks);
+        return response()->json($kecamatan);
     }
 
     // ── Buat ajuan baru (draft) ───────────────────────────────────────────────
@@ -102,7 +108,7 @@ class SubsidyQuotaController extends Controller
             $this->syncProducts($submission, $validated['products']);
         });
 
-        return response()->json($submission->load('products.kioskAllocations'), 201);
+        return response()->json($submission->load('products.kecamatanAllocations'), 201);
     }
 
     // ── Edit ajuan (hanya draft atau rejected) ────────────────────────────────
@@ -128,12 +134,12 @@ class SubsidyQuotaController extends Controller
                 'status' => 'draft',
             ]);
 
-            // Hapus produk lama (cascade ke kiosk_allocations)
+            // Hapus produk lama (cascade ke kecamatan_allocations)
             $submission->products()->delete();
             $this->syncProducts($submission, $validated['products']);
         });
 
-        return response()->json($submission->fresh()->load('products.kioskAllocations'));
+        return response()->json($submission->fresh()->load('products.kecamatanAllocations'));
     }
 
     // ── Hapus ajuan (hanya draft) ─────────────────────────────────────────────
@@ -218,11 +224,9 @@ class SubsidyQuotaController extends Controller
             'products'                                       => 'required|array|min:1',
             'products.*.product_id'                          => 'required|integer|exists:product_master,id',
             'products.*.total_qty_ton'                       => 'required|numeric|min:0.01',
-            'products.*.kiosk_allocations'                   => 'required|array|min:1',
-            'products.*.kiosk_allocations.*.kiosk_id'        => 'required|integer',
-            'products.*.kiosk_allocations.*.kiosk_name'      => 'required|string|max:200',
-            'products.*.kiosk_allocations.*.kiosk_email'     => 'required|email|max:256',
-            'products.*.kiosk_allocations.*.qty_ton'         => 'required|numeric|min:0.01',
+            'products.*.kecamatan_allocations'                => 'required|array|min:1',
+            'products.*.kecamatan_allocations.*.kecamatan'    => 'required|string|max:150',
+            'products.*.kecamatan_allocations.*.qty_ton'      => 'required|numeric|min:0.01',
         ]);
     }
 
@@ -238,12 +242,10 @@ class SubsidyQuotaController extends Controller
                 'total_qty_ton' => $p['total_qty_ton'],
             ]);
 
-            foreach ($p['kiosk_allocations'] as $alloc) {
-                SubsidyQuotaKioskAllocation::create([
+            foreach ($p['kecamatan_allocations'] as $alloc) {
+                SubsidyQuotaKecamatanAllocation::create([
                     'quota_product_id' => $quotaProduct->id,
-                    'kiosk_id'         => $alloc['kiosk_id'],
-                    'kiosk_name'       => $alloc['kiosk_name'],
-                    'kiosk_email'      => $alloc['kiosk_email'],
+                    'kecamatan'        => $alloc['kecamatan'],
                     'qty_ton'          => $alloc['qty_ton'],
                 ]);
             }

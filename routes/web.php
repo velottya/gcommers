@@ -73,13 +73,14 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     // Alokasi Biaya per Pesanan (AdminRegion → submit → SuperAdmin approve)
     Route::get('/order-cost-allocations',                    [OrderCostAllocationController::class, 'index']);
     Route::get('/order-cost-allocations/defaults',           [OrderCostAllocationController::class, 'defaults']);
+    Route::get('/order-cost-allocations/context/{orderId}',  [OrderCostAllocationController::class, 'context']);
     Route::post('/order-cost-allocations',                   [OrderCostAllocationController::class, 'storeOrUpdate']);
     Route::post('/order-cost-allocations/{id}/submit',       [OrderCostAllocationController::class, 'submit']);
     Route::post('/order-cost-allocations/{id}/approve',      [OrderCostAllocationController::class, 'approve']);
     Route::post('/order-cost-allocations/{id}/reject',       [OrderCostAllocationController::class, 'reject']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
-    Route::get('/quota-subsidi/kiosks',       [SubsidyQuotaController::class, 'kiosks']);
+    Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);
     Route::get('/quota-subsidi',              [SubsidyQuotaController::class, 'index']);
     Route::post('/quota-subsidi',             [SubsidyQuotaController::class, 'store']);
     Route::get('/quota-subsidi/{id}',         [SubsidyQuotaController::class, 'show']);

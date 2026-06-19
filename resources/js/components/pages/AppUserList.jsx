@@ -46,7 +46,7 @@ const VALID_REGIONS = [
 // ─── Kiosk modal ─────────────────────────────────────────────────────────────
 
 const KIOSK_EMPTY = {
-    Email: '', DisplayName: '', password: '', Phone: '', Address: '', KioskName: '', Region: '', PicName: '',
+    Email: '', DisplayName: '', password: '', Phone: '', Address: '', KioskName: '', Region: '', Kecamatan: '', PicName: '',
 };
 
 function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
@@ -140,6 +140,10 @@ function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
                                 )}
                             </Field>
                         </div>
+                        <Field label="Kecamatan" error={errors.Kecamatan?.[0]}>
+                            <Inp type="text" value={form.Kecamatan} onChange={set('Kecamatan')}
+                                placeholder="Nama kecamatan" error={errors.Kecamatan?.[0]} />
+                        </Field>
                         <Field label="No. Telepon" error={errors.Phone?.[0]}>
                             <Inp type="text" value={form.Phone} onChange={set('Phone')}
                                 placeholder="08xx" error={errors.Phone?.[0]} />
@@ -357,6 +361,7 @@ const KIOSK_COLS = (onEdit, onDelete) => [
     { key: 'DisplayName', label: 'Nama' },
     { key: 'KioskName',   label: 'Nama Kiosk' },
     { key: 'Region',      label: 'Region' },
+    { key: 'Kecamatan',   label: 'Kecamatan' },
     { key: 'Phone',       label: 'Telepon' },
     { key: 'CreatedAt',   label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
     {

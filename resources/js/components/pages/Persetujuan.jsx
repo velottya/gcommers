@@ -131,9 +131,9 @@ function TabAlokasibiaya() {
     const columns = [
         { key: 'poNumber',        label: 'PO Number',    render: r => <span className="font-mono text-xs">{r.poNumber || r.order_id}</span> },
         { key: 'region',          label: 'Region' },
-        { key: 'shipping_cost',   label: 'Ongkir',       render: r => formatRupiah(r.shipping_cost) },
+        { key: 'kecamatan',       label: 'Kecamatan',    render: r => r.kecamatan || '—' },
+        { key: 'shipping_cost_per_kg', label: 'Ongkir/kg', render: r => formatRupiah(r.shipping_cost_per_kg) },
         { key: 'pph_amount',      label: 'PPH',          render: r => formatRupiah(r.pph_amount) },
-        { key: 'ppn_amount',      label: 'PPN',          render: r => formatRupiah(r.ppn_amount) },
         { key: 'total_allocated', label: 'Total',        render: r => <span className="font-semibold text-teal-300">{formatRupiah(r.total_allocated)}</span> },
         { key: 'allocated_by',    label: 'Diajukan Oleh',render: r => <span className="text-xs text-slate-400">{r.allocated_by}</span> },
         { key: 'status',          label: 'Status',       render: r => <StatusChip value={r.status} /> },
@@ -171,9 +171,9 @@ function TabAlokasibiaya() {
                     summary={
                         <div className="space-y-1 text-xs">
                             <p><span className="text-slate-500">Order:</span> {target.poNumber || target.order_id}</p>
-                            <p><span className="text-slate-500">Region:</span> {target.region}</p>
-                            <p><span className="text-slate-500">Ongkir:</span> {formatRupiah(target.shipping_cost)}</p>
-                            <p><span className="text-slate-500">PPH:</span> {formatRupiah(target.pph_amount)} &nbsp; <span className="text-slate-500">PPN:</span> {formatRupiah(target.ppn_amount)}</p>
+                            <p><span className="text-slate-500">Region:</span> {target.region} &nbsp; <span className="text-slate-500">Kecamatan:</span> {target.kecamatan || '—'}</p>
+                            <p><span className="text-slate-500">Ongkir/kg:</span> {formatRupiah(target.shipping_cost_per_kg)}</p>
+                            <p><span className="text-slate-500">PPH:</span> {formatRupiah(target.pph_amount)}</p>
                             <p><span className="text-slate-500">Total:</span> <strong className="text-teal-300">{formatRupiah(target.total_allocated)}</strong></p>
                             {target.notes && <p><span className="text-slate-500">Catatan:</span> {target.notes}</p>}
                         </div>
@@ -262,9 +262,9 @@ function TabQuota() {
                             <span className="text-amber-300 font-mono">{fTon(p.total_qty_ton)}</span>
                         </div>
                         <div className="pl-2 space-y-0.5 text-slate-400">
-                            {(p.kiosk_allocations ?? []).map(k => (
+                            {(p.kecamatan_allocations ?? []).map(k => (
                                 <div key={k.id} className="flex justify-between">
-                                    <span>{k.kiosk_name}</span>
+                                    <span>{k.kecamatan}</span>
                                     <span className="font-mono">{fTon(k.qty_ton)}</span>
                                 </div>
                             ))}

@@ -31,8 +31,8 @@ class SubsidyQuotaProduct extends Model
         return $this->belongsTo(Product::class);
     }
 
-    public function kioskAllocations(): HasMany
+    public function kecamatanAllocations(): HasMany
     {
-        return $this->hasMany(SubsidyQuotaKioskAllocation::class, 'quota_product_id');
+        return $this->hasMany(SubsidyQuotaKecamatanAllocation::class, 'quota_product_id');
     }
 }

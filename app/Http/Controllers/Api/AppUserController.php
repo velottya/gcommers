@@ -39,6 +39,7 @@ class AppUserController extends Controller
                 $q->where('Email', 'like', "%{$s}%")
                   ->orWhere('DisplayName', 'like', "%{$s}%")
                   ->orWhere('KioskName', 'like', "%{$s}%")
+                  ->orWhere('Kecamatan', 'like', "%{$s}%")
             );
         }
 
@@ -92,6 +93,7 @@ class AppUserController extends Controller
             'Address'     => 'nullable|string|max:500',
             'KioskName'   => 'nullable|string|max:200',
             'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
+            'Kecamatan'   => 'nullable|string|max:150',
             'PicName'     => 'nullable|string|max:200',
         ]);
 
@@ -110,6 +112,7 @@ class AppUserController extends Controller
             'Phone'        => $data['Phone'] ?? null,
             'Address'      => $data['Address'] ?? null,
             'Region'       => $data['Region'] ?? null,
+            'Kecamatan'    => $data['Kecamatan'] ?? null,
             'PicName'      => $data['PicName'] ?? null,
             'Role'         => 'kiosk',
             'PasswordHash' => DB::raw($hashLit),
@@ -197,6 +200,7 @@ class AppUserController extends Controller
                 'Address'     => 'nullable|string|max:500',
                 'KioskName'   => 'nullable|string|max:200',
                 'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
+                'Kecamatan'   => 'nullable|string|max:150',
                 'PicName'     => 'nullable|string|max:200',
             ]);
 
@@ -313,6 +317,7 @@ class AppUserController extends Controller
             'Address'     => $u->Address ? (string) $u->Address : null,
             'KioskName'   => $u->KioskName ? (string) $u->KioskName : null,
             'Region'      => $u->Region ? (string) $u->Region : null,
+            'Kecamatan'   => $u->Kecamatan ? (string) $u->Kecamatan : null,
             'PicName'     => $u->PicName ? (string) $u->PicName : null,
             'CreatedAt'   => $u->CreatedAt,
         ];
