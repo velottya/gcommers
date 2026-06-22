@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\KecamatanProductPrice;
+use App\Models\KecamatanProductStock;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +39,51 @@ class ProductController extends Controller
     public function show(string $id)
     {
         return response()->json($this->format(Product::findOrFail($id)));
+    }
+
+    // ── Stok & harga terkini per kecamatan (dari tabel current-state) ────────
+
+    public function kecamatanStatus(string $id)
+    {
+        $product = Product::findOrFail($id);
+        $user    = Auth::user();
+
+        $priceQuery = KecamatanProductPrice::where('product_id', $product->id);
+        $stockQuery = KecamatanProductStock::where('product_id', $product->id);
+
+        if ($user->Role === 'AdminRegion') {
+            $priceQuery->where('region', $user->Region);
+            $stockQuery->where('region', $user->Region);
+        }
+
+        $prices = $priceQuery->get()->keyBy('kecamatan');
+        $stocks = $stockQuery->get()
+                              ->groupBy('kecamatan')
+                              ->map(fn ($rows) => $rows->sortByDesc('period')->first());
+
+        $kecamatanNames = $prices->keys()->merge($stocks->keys())->unique()->sort()->values();
+
+        $rows = $kecamatanNames->map(function ($kecamatan) use ($prices, $stocks) {
+            $price   = $prices->get($kecamatan);
+            $stock   = $stocks->get($kecamatan);
+            $usedTon = $stock?->usedTon();
+
+            return [
+                'kecamatan'         => $kecamatan,
+                'region'            => $price->region ?? $stock->region ?? null,
+                'harga_satuan'      => $price ? (float) $price->harga_satuan : null,
+                'biaya_pengiriman'  => $price ? (float) $price->biaya_pengiriman : null,
+                'transport_partner' => $price->transport_partner ?? null,
+                'price_updated_at'  => $price->approved_at ?? null,
+                'period'            => $stock->period ?? null,
+                'quota_ton'         => $stock ? (float) $stock->quota_ton : null,
+                'used_ton'          => $usedTon,
+                'remaining_ton'     => $stock ? max(0, (float) $stock->quota_ton - $usedTon) : null,
+                'stock_updated_at'  => $stock->approved_at ?? null,
+            ];
+        });
+
+        return response()->json($rows->values());
     }
 
     public function categories()

@@ -1,8 +1,8 @@
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Ban, Download } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import StatusBadge from '../ui/StatusBadge';
+import { OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
 
 function formatRupiah(val) {
     if (val == null) return '—';
@@ -23,21 +23,88 @@ function InfoRow({ label, value }) {
     );
 }
 
+function CancelModal({ order, onClose, onCancelled }) {
+    const [reason, setReason]   = useState('');
+    const [saving, setSaving]   = useState(false);
+    const [error,  setError]    = useState(null);
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        if (!reason.trim()) { setError('Alasan pembatalan wajib diisi.'); return; }
+        setSaving(true);
+        setError(null);
+        try {
+            await api.post(`/orders/${order.id}/cancel`, { reason });
+            onCancelled();
+            onClose();
+        } catch (err) {
+            setError(err.message || 'Gagal membatalkan order.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+                <h2 className="text-base font-semibold text-white">Batalkan Pesanan?</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                    Order <span className="font-mono text-white">{order.poNumber}</span> akan ditandai <span className="text-red-300">Dibatalkan</span>. Tindakan ini tidak dapat dibatalkan.
+                </p>
+                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                    <textarea
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        rows={3}
+                        placeholder="Alasan pembatalan (wajib diisi)…"
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-red-400/40 transition"
+                    />
+                    {error && <p className="text-sm text-red-400">{error}</p>}
+                    <div className="flex justify-end gap-3">
+                        <button type="button" onClick={onClose}
+                            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
+                            Batal
+                        </button>
+                        <button type="submit" disabled={saving}
+                            className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-50 transition">
+                            {saving ? 'Memproses…' : 'Ya, Batalkan Pesanan'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+const SHIPMENT_STATUS_LABEL = {
+    siap_muat:        'Siap Muat (menunggu sopir berangkat)',
+    dalam_perjalanan: 'Dalam Perjalanan',
+    selesai:          'Selesai',
+};
+
 export default function OrderDetail({ user }) {
     const { id }                    = useParams();
     const navigate                  = useNavigate();
     const [order,   setOrder]       = useState(null);
     const [loading, setLoading]     = useState(true);
     const [error,   setError]       = useState(null);
+    const [cancelOpen, setCancelOpen] = useState(false);
 
-    const canDownloadBptp = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
+    const canDownloadDocs = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
+    const canCancel       = (user?.role === 'SuperAdmin' || user?.role === 'AdminTransport')
+        && order?.paymentStatus === 'paid'
+        && !['delivered', 'cancelled'].includes(order?.orderStatus);
 
-    useEffect(() => {
+    function reload() {
+        setLoading(true);
         api.get(`/orders/${id}`)
             .then(setOrder)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
-    }, [id]);
+    }
+
+    useEffect(() => { reload(); }, [id]);
 
     if (loading) {
         return (
@@ -69,20 +136,49 @@ export default function OrderDetail({ user }) {
                     <h1 className="text-2xl font-semibold text-white">Order Detail</h1>
                     <p className="mt-0.5 font-mono text-sm text-slate-400">{order?.poNumber}</p>
                 </div>
-                <StatusBadge value={order?.status} />
+                <PaymentStatusBadge value={order?.paymentStatus} />
+                <OrderStatusBadge value={order?.orderStatus} />
 
-                {canDownloadBptp && order && (
-                    <a
-                        href={`/api/admin/orders/${order.id}/bptp`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="ml-auto flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-400/20 transition"
-                    >
-                        <Download size={15} />
-                        Unduh BPTP
-                    </a>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                    {canCancel && (
+                        <button
+                            onClick={() => setCancelOpen(true)}
+                            className="flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-400/20 transition"
+                        >
+                            <Ban size={15} />
+                            Batalkan Pesanan
+                        </button>
+                    )}
+                    {canDownloadDocs && order && (
+                        <a
+                            href={`/api/admin/orders/${order.id}/bptp`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-400/20 transition"
+                        >
+                            <Download size={15} />
+                            Unduh BPTP
+                        </a>
+                    )}
+                    {canDownloadDocs && order?.shipment && (
+                        <a
+                            href={`/api/admin/orders/${order.id}/surat-jalan`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm font-semibold text-sky-300 hover:bg-sky-400/20 transition"
+                        >
+                            <Download size={15} />
+                            Unduh Surat Jalan
+                        </a>
+                    )}
+                </div>
             </div>
+
+            {order?.orderStatusNote && (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                    Catatan: {order.orderStatusNote}
+                </div>
+            )}
 
             {/* Order header */}
             <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
@@ -118,6 +214,42 @@ export default function OrderDetail({ user }) {
                     <InfoRow label="Diperbarui" value={formatDate(order?.updatedAt)} />
                 </dl>
             </div>
+
+            {/* Pengiriman / Shipment */}
+            {order?.shipment && (
+                <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
+                    <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Pengiriman &mdash; {SHIPMENT_STATUS_LABEL[order.shipment.status] ?? order.shipment.status}
+                    </h2>
+                    <dl className="space-y-3">
+                        <InfoRow label="Sopir"        value={order.shipment.driverName} />
+                        <InfoRow label="Transportir"  value={order.shipment.transportirEmail} />
+                        <InfoRow label="Kendaraan"    value={`${order.shipment.truckLabel ?? '—'} ${order.shipment.policeNumber ? `(${order.shipment.policeNumber})` : ''}`} />
+                        <InfoRow label="Gudang Asal"  value={order.shipment.warehouseName} />
+                        <InfoRow label="Tujuan Kios"  value={order.shipment.destinationLabel} />
+                        <InfoRow label="Alamat Tujuan" value={order.shipment.destinationAddress} />
+                        <InfoRow label="Muat Berangkat (Load-In)" value={formatDate(order.shipment.muatInAt)} />
+                        <InfoRow label="Muat Tiba (Load-Out)"     value={formatDate(order.shipment.muatOutAt)} />
+                        <InfoRow label="Catatan"      value={order.shipment.note} />
+                    </dl>
+                    {(order.shipment.muatInPhotoUrl || order.shipment.muatOutPhotoUrl) && (
+                        <div className="mt-4 grid grid-cols-2 gap-4">
+                            {order.shipment.muatInPhotoUrl && (
+                                <div>
+                                    <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-In</p>
+                                    <img src={order.shipment.muatInPhotoUrl} alt="Foto load-in" className="rounded-xl border border-white/10" />
+                                </div>
+                            )}
+                            {order.shipment.muatOutPhotoUrl && (
+                                <div>
+                                    <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-Out</p>
+                                    <img src={order.shipment.muatOutPhotoUrl} alt="Foto load-out" className="rounded-xl border border-white/10" />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Order items (if available) */}
             {order?.items?.length > 0 && (
@@ -164,6 +296,10 @@ export default function OrderDetail({ user }) {
                         ))}
                     </div>
                 </div>
+            )}
+
+            {cancelOpen && (
+                <CancelModal order={order} onClose={() => setCancelOpen(false)} onCancelled={reload} />
             )}
         </div>
     );

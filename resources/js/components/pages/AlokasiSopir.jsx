@@ -1,7 +1,7 @@
-import { Search, UserCheck, X } from 'lucide-react';
+import { Search, Trash2, UserCheck, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import StatusBadge from '../ui/StatusBadge';
+import { OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
 import { Pagination, Table } from '../ui/Table';
 
 function formatDate(val) {
@@ -9,21 +9,33 @@ function formatDate(val) {
     return new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function AssignModal({ order, drivers, onClose, onSaved }) {
-    const [selected, setSelected] = useState(order.transportirEmail ?? '');
-    const [note,     setNote]     = useState(order.assignmentNote ?? '');
-    const [saving,   setSaving]   = useState(false);
-    const [error,    setError]    = useState(null);
+const SHIPMENT_STATUS_LABEL = {
+    siap_muat:        'Siap Muat',
+    dalam_perjalanan: 'Dalam Perjalanan',
+    selesai:          'Selesai',
+};
+
+function AssignModal({ order, drivers, warehouses, onClose, onSaved }) {
+    const [selectedDriver,    setSelectedDriver]    = useState(order.transportirEmail ?? '');
+    const [selectedWarehouse, setSelectedWarehouse] = useState('');
+    const [note,    setNote]    = useState(order.note ?? '');
+    const [saving,  setSaving]  = useState(false);
+    const [error,   setError]   = useState(null);
+
+    const alreadyAssigned = Boolean(order.shipmentId);
+    const isLocked = order.shipmentStatus && order.shipmentStatus !== 'siap_muat';
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (!selected) { setError('Pilih driver terlebih dahulu.'); return; }
+        if (!selectedDriver) { setError('Pilih sopir terlebih dahulu.'); return; }
+        if (!selectedWarehouse) { setError('Pilih gudang asal terlebih dahulu.'); return; }
         setSaving(true);
         setError(null);
         try {
-            await api.post('/driver-assignments', {
-                order_id:          order.id,
-                transportir_email: selected,
+            await api.post('/shipments', {
+                order_id: order.id,
+                transportir_email: selectedDriver,
+                warehouse_id: selectedWarehouse,
                 note,
             });
             onSaved();
@@ -36,11 +48,10 @@ function AssignModal({ order, drivers, onClose, onSaved }) {
     }
 
     async function handleRemove() {
-        if (!order.assignmentId) return;
         setSaving(true);
         setError(null);
         try {
-            await api.del(`/driver-assignments/${order.assignmentId}`);
+            await api.del(`/shipments/${order.id}`);
             onSaved();
             onClose();
         } catch (err) {
@@ -69,22 +80,44 @@ function AssignModal({ order, drivers, onClose, onSaved }) {
                         <p className="text-xs text-slate-400">{order.userEmail}</p>
                     </div>
 
+                    {isLocked && (
+                        <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+                            Pengiriman sudah berjalan ({SHIPMENT_STATUS_LABEL[order.shipmentStatus]}) — alokasi tidak bisa diubah lagi.
+                        </div>
+                    )}
+
                     {error && (
                         <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
                     )}
 
                     <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-400">Pilih Driver</label>
+                        <label className="block text-xs font-medium text-slate-400">Pilih Sopir</label>
                         <select
-                            value={selected}
-                            onChange={e => setSelected(e.target.value)}
-                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/40 transition"
+                            value={selectedDriver}
+                            onChange={e => setSelectedDriver(e.target.value)}
+                            disabled={isLocked}
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/40 transition disabled:opacity-50"
                         >
-                            <option value="">— Pilih driver —</option>
+                            <option value="">— Pilih sopir —</option>
                             {drivers.map(d => (
                                 <option key={d.Email} value={d.Email}>
-                                    {d.TransportirName || d.DisplayName} ({d.Email})
+                                    {d.TransportirName || d.DisplayName} ({d.Email}) — {d.Type || 'truk tidak diketahui'}
                                 </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="block text-xs font-medium text-slate-400">Gudang Asal (Terdekat)</label>
+                        <select
+                            value={selectedWarehouse}
+                            onChange={e => setSelectedWarehouse(e.target.value)}
+                            disabled={isLocked}
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/40 transition disabled:opacity-50"
+                        >
+                            <option value="">— Pilih gudang —</option>
+                            {warehouses.map(w => (
+                                <option key={w.id} value={w.id}>{w.name} — {w.address}</option>
                             ))}
                         </select>
                     </div>
@@ -95,27 +128,31 @@ function AssignModal({ order, drivers, onClose, onSaved }) {
                             value={note}
                             onChange={e => setNote(e.target.value)}
                             rows={2}
-                            placeholder="Instruksi atau catatan untuk driver…"
-                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-sky-400/40 transition"
+                            disabled={isLocked}
+                            placeholder="Instruksi atau catatan untuk sopir…"
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-sky-400/40 transition disabled:opacity-50"
                         />
                     </div>
 
                     <div className="flex justify-between gap-3">
-                        {order.assignmentId && (
+                        {alreadyAssigned && !isLocked && (
                             <button type="button" onClick={handleRemove} disabled={saving}
-                                className="rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 disabled:opacity-50 transition">
+                                className="flex items-center gap-1.5 rounded-xl border border-red-400/30 px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 disabled:opacity-50 transition">
+                                <Trash2 size={14} />
                                 Hapus Alokasi
                             </button>
                         )}
                         <div className="ml-auto flex gap-3">
                             <button type="button" onClick={onClose}
                                 className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
-                                Batal
+                                Tutup
                             </button>
-                            <button type="submit" disabled={saving}
-                                className="rounded-xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-50 transition">
-                                {saving ? 'Menyimpan…' : 'Alokasikan'}
-                            </button>
+                            {!isLocked && (
+                                <button type="submit" disabled={saving}
+                                    className="rounded-xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-50 transition">
+                                    {saving ? 'Menyimpan…' : alreadyAssigned ? 'Simpan Perubahan' : 'Alokasikan'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </form>
@@ -124,50 +161,57 @@ function AssignModal({ order, drivers, onClose, onSaved }) {
     );
 }
 
-const STATUS_OPTIONS = ['', 'pending', 'processing', 'on_delivery', 'delivered', 'cancelled'];
-
-export default function AlokasiSopir({ user }) {
+export default function AlokasiSopir() {
     const [data,         setData]         = useState(null);
     const [drivers,      setDrivers]      = useState([]);
+    const [warehouses,   setWarehouses]   = useState([]);
     const [loading,      setLoading]      = useState(true);
     const [error,        setError]        = useState(null);
     const [page,         setPage]         = useState(1);
     const [search,       setSearch]       = useState('');
-    const [status,       setStatus]       = useState('');
     const [query,        setQuery]        = useState({});
     const [assignTarget, setAssignTarget] = useState(null);
 
-    const fetch = useCallback(() => {
+    const fetchOrders = useCallback(() => {
         setLoading(true);
-        api.get('/driver-assignments', { page, ...query })
+        api.get('/shipments', { page, ...query })
             .then(setData)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
     }, [page, query]);
 
-    useEffect(() => { fetch(); }, [fetch]);
+    useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
     useEffect(() => {
         api.get('/app-users/transportir', { per_page: 200 })
             .then(d => setDrivers(d?.data ?? []))
+            .catch(() => {});
+        api.get('/warehouses')
+            .then(setWarehouses)
             .catch(() => {});
     }, []);
 
     function handleSearch(e) {
         e.preventDefault();
         setPage(1);
-        setQuery({ search, status });
+        setQuery({ search });
     }
 
     const columns = [
         { key: 'poNumber',    label: 'PO Number',  render: r => <span className="font-mono text-xs">{r.poNumber}</span> },
         { key: 'userEmail',   label: 'Kiosk',      render: r => <span className="truncate max-w-[140px] block">{r.userEmail}</span> },
-        { key: 'status',      label: 'Status',     render: r => <StatusBadge value={r.status} /> },
+        { key: 'paymentStatus', label: 'Pembayaran', render: r => <PaymentStatusBadge value={r.paymentStatus} /> },
+        { key: 'orderStatus', label: 'Status',     render: r => <OrderStatusBadge value={r.orderStatus} /> },
         { key: 'createdAt',   label: 'Tanggal',    render: r => formatDate(r.createdAt) },
         {
-            key: 'driver', label: 'Driver',
+            key: 'driver', label: 'Sopir / Gudang',
             render: r => r.transportirEmail
-                ? <span className="text-sky-300 text-xs">{r.transportirEmail}</span>
+                ? (
+                    <div className="text-xs">
+                        <p className="text-sky-300">{r.driverName || r.transportirEmail}</p>
+                        <p className="text-slate-500">{r.warehouseName ?? '—'}</p>
+                    </div>
+                )
                 : <span className="text-slate-500 italic text-xs">Belum dialokasikan</span>,
         },
         {
@@ -177,7 +221,7 @@ export default function AlokasiSopir({ user }) {
                     onClick={() => setAssignTarget(r)}
                     className="rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-400/20 transition"
                 >
-                    {r.transportirEmail ? 'Ubah' : 'Alokasikan'}
+                    {r.transportirEmail ? 'Lihat / Ubah' : 'Alokasikan'}
                 </button>
             ),
         },
@@ -188,7 +232,7 @@ export default function AlokasiSopir({ user }) {
             <div>
                 <h1 className="text-2xl font-semibold text-white">Alokasi Sopir</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Tetapkan driver untuk setiap order pengiriman.
+                    Tetapkan sopir &amp; gudang asal untuk setiap order yang sudah dibayar.
                 </p>
             </div>
 
@@ -199,10 +243,6 @@ export default function AlokasiSopir({ user }) {
                         value={search} onChange={e => setSearch(e.target.value)}
                         className="w-full rounded-xl border border-white/10 bg-slate-950/50 pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-sky-400/30 transition" />
                 </div>
-                <select value={status} onChange={e => setStatus(e.target.value)}
-                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-sky-400/30 transition">
-                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || 'Semua status'}</option>)}
-                </select>
                 <button type="submit"
                     className="rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-400 transition">
                     Cari
@@ -225,8 +265,9 @@ export default function AlokasiSopir({ user }) {
                 <AssignModal
                     order={assignTarget}
                     drivers={drivers}
+                    warehouses={warehouses}
                     onClose={() => setAssignTarget(null)}
-                    onSaved={fetch}
+                    onSaved={fetchOrders}
                 />
             )}
         </div>

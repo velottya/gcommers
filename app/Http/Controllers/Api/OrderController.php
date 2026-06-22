@@ -13,10 +13,20 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = $this->accessibleOrders($user);
+        $query = $this->accessibleOrders($user)->with('shipment.warehouse');
 
         if ($request->filled('status')) {
             $query->where('Status', $request->status);
+        }
+
+        if ($request->filled('paymentStatus')) {
+            $request->paymentStatus === 'paid'
+                ? $query->whereNotNull('PaidAt')
+                : $query->whereNull('PaidAt');
+        }
+
+        if ($request->filled('orderStatus')) {
+            $query->where('OrderStatus', $request->orderStatus);
         }
 
         if ($request->filled('search')) {
@@ -38,7 +48,7 @@ class OrderController extends Controller
     {
         $user  = Auth::user();
 
-        $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+        $order = $this->accessibleOrders($user)->with('shipment.warehouse')->where('Id', $id)->firstOrFail();
 
         try {
             $order->load(['items', 'events']);
@@ -71,6 +81,52 @@ class OrderController extends Controller
         $filename = 'BPTP-' . preg_replace('/[^A-Za-z0-9\-]/', '', $order->PoNumber) . '.pdf';
 
         return $pdf->download($filename);
+    }
+
+    public function downloadSuratJalan(string $id)
+    {
+        $user = Auth::user();
+
+        abort_unless(
+            in_array($user->Role, ['SuperAdmin', 'AdminRegion'], true),
+            403,
+            'Akses tidak diizinkan.'
+        );
+
+        $order    = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+        $shipment = $order->shipment()->with('warehouse')->first();
+
+        abort_if($shipment === null, 404, 'Belum ada alokasi sopir/pengiriman untuk order ini.');
+
+        $pdf = Pdf::loadView('surat-jalan', ['order' => $order, 'shipment' => $shipment])
+            ->setPaper('a4', 'portrait');
+
+        $filename = $shipment->ShipmentNumber . '.pdf';
+
+        return $pdf->download($filename);
+    }
+
+    public function cancel(Request $request, string $id)
+    {
+        $user = Auth::user();
+
+        abort_unless(in_array($user->Role, ['SuperAdmin', 'AdminTransport'], true), 403, 'Akses tidak diizinkan.');
+
+        $data = $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+
+        abort_unless($order->PaidAt, 422, 'Order belum dibayar, tidak ada yang perlu dibatalkan.');
+        abort_if(in_array($order->OrderStatus, ['delivered', 'cancelled'], true), 422, 'Order sudah selesai/dibatalkan.');
+
+        $order->update([
+            'OrderStatus'     => 'cancelled',
+            'OrderStatusNote' => $data['reason'],
+        ]);
+
+        return response()->json($this->format($order->fresh()));
     }
 
     public function recap(Request $request)
@@ -115,23 +171,46 @@ class OrderController extends Controller
 
     private function format(Order $o, bool $withRelations = false): array
     {
+        $shipment = $o->relationLoaded('shipment') ? $o->shipment : null;
+
         $data = [
-            'id'             => $o->Id,
-            'poNumber'       => $o->PoNumber,
-            'userEmail'      => $o->UserEmail,
-            'status'         => $o->Status,
-            'vendor'         => $o->Vendor,
-            'paymentMethod'  => $o->PaymentMethod,
-            'subTotal'       => $o->Subtotal,
-            'taxAmount'      => $o->TaxAmount,
-            'shippingAmount' => $o->ShippingAmount,
-            'totalAmount'    => $o->TotalAmount,
-            'createdAt'      => $o->CreatedAt,
-            'updatedAt'      => $o->UpdatedAt,
-            'paidAt'         => $o->PaidAt,
-            'deliveredAt'    => $o->DeliveredAt,
-            'virtualAccount' => $o->VirtualAccount,
-            'vaExpiredAt'    => $o->VaExpiredAt,
+            'id'              => $o->Id,
+            'poNumber'        => $o->PoNumber,
+            'userEmail'       => $o->UserEmail,
+            'status'          => $o->Status,
+            'paymentStatus'   => $o->PaymentStatus,
+            'orderStatus'     => $o->EffectiveOrderStatus,
+            'orderStatusNote' => $o->OrderStatusNote,
+            'vendor'          => $o->Vendor,
+            'paymentMethod'   => $o->PaymentMethod,
+            'subTotal'        => $o->Subtotal,
+            'taxAmount'       => $o->TaxAmount,
+            'shippingAmount'  => $o->ShippingAmount,
+            'totalAmount'     => $o->TotalAmount,
+            'createdAt'       => $o->CreatedAt,
+            'updatedAt'       => $o->UpdatedAt,
+            'paidAt'          => $o->PaidAt,
+            'deliveredAt'     => $o->DeliveredAt,
+            'virtualAccount'  => $o->VirtualAccount,
+            'vaExpiredAt'     => $o->VaExpiredAt,
+            'shipment'        => $shipment ? [
+                'shipmentNumber'  => $shipment->ShipmentNumber,
+                'status'          => $shipment->Status,
+                'driverName'      => $shipment->DriverName,
+                'transportirEmail'=> $shipment->TransportirEmail,
+                'truckLabel'      => $shipment->TruckLabel,
+                'policeNumber'    => $shipment->PoliceNumber,
+                'warehouseName'   => $shipment->warehouse?->name,
+                'destinationLabel'=> $shipment->DestinationLabel,
+                'destinationAddress' => $shipment->DestinationAddress,
+                'muatInPhotoUrl'  => $shipment->MuatInPhotoUrl,
+                'muatInAt'        => $shipment->MuatInCompletedAt,
+                'muatOutPhotoUrl' => $shipment->MuatOutPhotoUrl,
+                'muatOutAt'       => $shipment->MuatOutCompletedAt,
+                'completedAt'     => $shipment->CompletedAt,
+                'totalDistanceMeters' => $shipment->TotalDistanceMeters,
+                'note'            => $shipment->Note,
+            ] : null,
         ];
 
         if ($withRelations) {

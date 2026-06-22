@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './layout/Layout';
+import AdminRegionList from './pages/AdminRegionList';
+import AdminTransportList from './pages/AdminTransportList';
 import AlokasiBiaya from './pages/AlokasiBiaya';
 import AjuanStok from './pages/AjuanStok';
 import AlokasiSopir from './pages/AlokasiSopir';
@@ -18,7 +20,7 @@ import RekapTagihan from './pages/RekapTagihan';
 import SystemSettings from './pages/SystemSettings';
 import TarifTransportir from './pages/TarifTransportir';
 import TransportProfile from './pages/TransportProfile';
-import UserList from './pages/UserList';
+import WarehouseList from './pages/WarehouseList';
 
 export default function App({ user }) {
     if (!user) {
@@ -45,8 +47,11 @@ export default function App({ user }) {
                         <Route path="/products/:id" element={<ProductDetail />} />
                     )}
 
-                    {role !== 'AdminTransport' && (
-                        <Route path="/users" element={<UserList user={user} />} />
+                    {(role === 'SuperAdmin' || role === 'AdminRegion') && (
+                        <Route path="/admin-region" element={<AdminRegionList user={user} />} />
+                    )}
+                    {role === 'SuperAdmin' && (
+                        <Route path="/admin-transport" element={<AdminTransportList user={user} />} />
                     )}
 
                     <Route path="/notifications" element={<NotificationList user={user} />} />
@@ -93,6 +98,9 @@ export default function App({ user }) {
                     )}
                     {role === 'AdminTransport' && (
                         <Route path="/rekap-tagihan"  element={<RekapTagihan user={user} />} />
+                    )}
+                    {(role === 'SuperAdmin' || role === 'AdminTransport') && (
+                        <Route path="/gudang"  element={<WarehouseList user={user} />} />
                     )}
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />

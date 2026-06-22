@@ -13,18 +13,26 @@ function formatRupiah(val) {
 }
 
 const STATUS_COLOR = {
-    pending:     'bg-slate-400/20  text-slate-300',
-    processing:  'bg-blue-400/20   text-blue-300',
-    on_delivery: 'bg-amber-400/20  text-amber-300',
-    delivered:   'bg-emerald-400/20 text-emerald-300',
-    cancelled:   'bg-red-400/20    text-red-300',
+    pending_payment: 'bg-slate-400/20  text-slate-300',
+    paid:            'bg-blue-400/20   text-blue-300',
+    shipping:        'bg-amber-400/20  text-amber-300',
+    delivered:       'bg-emerald-400/20 text-emerald-300',
+    cancelled:       'bg-red-400/20    text-red-300',
+};
+
+const STATUS_LABEL = {
+    pending_payment: 'Pending',
+    paid:            'Sedang Diproses',
+    shipping:        'Dalam Perjalanan',
+    delivered:       'Selesai',
+    cancelled:       'Dibatalkan',
 };
 
 function StatusPill({ label, count }) {
     const color = STATUS_COLOR[label] ?? 'bg-slate-400/20 text-slate-300';
     return (
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${color}`}>
-            {label} <span className="font-semibold">{count}</span>
+            {STATUS_LABEL[label] ?? label} <span className="font-semibold">{count}</span>
         </span>
     );
 }

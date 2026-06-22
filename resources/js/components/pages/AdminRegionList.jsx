@@ -1,7 +1,6 @@
 import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import StatusBadge from '../ui/StatusBadge';
 import { Pagination, Table } from '../ui/Table';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -11,11 +10,10 @@ function formatDate(val) {
     return new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const ROLE_OPTIONS = [
-    { value: 'SuperAdmin',     label: 'SuperAdmin' },
-    { value: 'AdminRegion',    label: 'AdminRegion' },
-    { value: 'AdminTransport', label: 'AdminTransport' },
-];
+function formatDateTime(val) {
+    if (!val) return 'Belum pernah login';
+    return new Date(val).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+}
 
 const VALID_REGIONS = [
     'Jawa Timur',
@@ -26,11 +24,7 @@ const VALID_REGIONS = [
     'Lampung',
 ];
 
-const EMPTY_FORM = {
-    Email: '', DisplayName: '', Role: 'AdminRegion', Phone: '',
-    Region: '', CompanyName: '', TransportirName: '', PoliceNumber: '', PicName: '',
-    password: '',
-};
+const EMPTY_FORM = { Email: '', DisplayName: '', Phone: '', Region: '', password: '' };
 
 // ─── Field helper ────────────────────────────────────────────────────────────
 
@@ -68,7 +62,7 @@ function Select({ error, children, ...props }) {
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
 
-function AdminUserModal({ open, onClose, onSaved, editUser }) {
+function AdminRegionModal({ open, onClose, onSaved, editUser }) {
     const [form, setForm]     = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState({});
@@ -77,53 +71,43 @@ function AdminUserModal({ open, onClose, onSaved, editUser }) {
     useEffect(() => {
         if (!open) return;
         setErrors({});
-        if (editUser) {
-            setForm({ ...EMPTY_FORM, ...editUser, password: '' });
-        } else {
-            setForm(EMPTY_FORM);
-        }
+        setForm(editUser ? { ...EMPTY_FORM, ...editUser, password: '' } : EMPTY_FORM);
         setTimeout(() => firstRef.current?.focus(), 50);
     }, [open, editUser]);
 
     if (!open) return null;
 
     const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+    const isEdit = Boolean(editUser);
 
     async function handleSubmit(e) {
         e.preventDefault();
         setSaving(true);
         setErrors({});
         try {
-            if (editUser) {
-                await api.put(`/users/${editUser.Id}`, form);
+            const payload = { ...form, Role: 'AdminRegion' };
+            if (isEdit) {
+                await api.put(`/users/${editUser.Id}`, payload);
             } else {
-                await api.post('/users', form);
+                await api.post('/users', payload);
             }
             onSaved();
             onClose();
         } catch (err) {
-            if (err.status === 422) {
-                setErrors(err.errors || { _: [err.message] });
-            } else {
-                setErrors({ _: [err.message || 'Terjadi kesalahan.'] });
-            }
+            setErrors(err.status === 422 ? (err.errors || { _: [err.message] }) : { _: [err.message || 'Terjadi kesalahan.'] });
         } finally {
             setSaving(false);
         }
     }
 
-    const isEdit = Boolean(editUser);
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* backdrop */}
             <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
 
             <div className="relative z-10 w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
-                {/* header */}
                 <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
                     <h2 className="text-base font-semibold text-white">
-                        {isEdit ? 'Edit Admin' : 'Tambah Admin Baru'}
+                        {isEdit ? 'Edit AdminRegion' : 'Tambah AdminRegion'}
                     </h2>
                     <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:text-white transition">
                         <X size={18} />
@@ -138,52 +122,18 @@ function AdminUserModal({ open, onClose, onSaved, editUser }) {
                             </div>
                         )}
 
-                        {/* Email — readonly on edit */}
                         <Field label="Email" error={errors.Email?.[0]}>
-                            <Input
-                                ref={firstRef}
-                                type="email"
-                                value={form.Email}
-                                onChange={set('Email')}
-                                disabled={isEdit}
-                                placeholder="admin@email.com"
-                                error={errors.Email?.[0]}
-                            />
+                            <Input ref={firstRef} type="email" value={form.Email} onChange={set('Email')}
+                                disabled={isEdit} placeholder="admin@email.com" error={errors.Email?.[0]} />
                             {isEdit && <p className="mt-1 text-xs text-slate-600">Email tidak bisa diubah.</p>}
                         </Field>
 
                         <Field label="Nama Lengkap" error={errors.DisplayName?.[0]}>
-                            <Input
-                                type="text"
-                                value={form.DisplayName}
-                                onChange={set('DisplayName')}
-                                placeholder="Nama lengkap"
-                                error={errors.DisplayName?.[0]}
-                            />
+                            <Input type="text" value={form.DisplayName} onChange={set('DisplayName')}
+                                placeholder="Nama lengkap" error={errors.DisplayName?.[0]} />
                         </Field>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <Field label="Role" error={errors.Role?.[0]}>
-                                <Select value={form.Role} onChange={set('Role')} error={errors.Role?.[0]}>
-                                    {ROLE_OPTIONS.map(o => (
-                                        <option key={o.value} value={o.value}>{o.label}</option>
-                                    ))}
-                                </Select>
-                            </Field>
-
-                            <Field label="No. Telepon" error={errors.Phone?.[0]}>
-                                <Input
-                                    type="text"
-                                    value={form.Phone}
-                                    onChange={set('Phone')}
-                                    placeholder="08xx"
-                                    error={errors.Phone?.[0]}
-                                />
-                            </Field>
-                        </div>
-
-                        {/* Role-specific fields */}
-                        {form.Role === 'AdminRegion' && (
                             <Field label="Region" error={errors.Region?.[0]}>
                                 <Select value={form.Region} onChange={set('Region')} error={errors.Region?.[0]}>
                                     <option value="">-- Pilih Region --</option>
@@ -192,46 +142,29 @@ function AdminUserModal({ open, onClose, onSaved, editUser }) {
                                     ))}
                                 </Select>
                             </Field>
-                        )}
 
-                        {form.Role === 'AdminTransport' && (
-                            <div className="space-y-4">
-                                <Field label="Nama Perusahaan" error={errors.CompanyName?.[0]}>
-                                    <Input type="text" value={form.CompanyName} onChange={set('CompanyName')}
-                                        placeholder="PT. Contoh" error={errors.CompanyName?.[0]} />
-                                </Field>
-                            </div>
-                        )}
+                            <Field label="No. Telepon" error={errors.Phone?.[0]}>
+                                <Input type="text" value={form.Phone} onChange={set('Phone')}
+                                    placeholder="08xx" error={errors.Phone?.[0]} />
+                            </Field>
+                        </div>
 
-                        {/* Password */}
                         <Field
                             label={isEdit ? 'Password Baru (kosongkan jika tidak diubah)' : 'Password'}
                             error={errors.password?.[0]}
                         >
-                            <Input
-                                type="password"
-                                value={form.password}
-                                onChange={set('password')}
-                                placeholder={isEdit ? '••••••••' : 'Min. 8 karakter'}
-                                error={errors.password?.[0]}
-                            />
+                            <Input type="password" value={form.password} onChange={set('password')}
+                                placeholder={isEdit ? '••••••••' : 'Min. 8 karakter'} error={errors.password?.[0]} />
                         </Field>
                     </div>
 
-                    {/* footer */}
                     <div className="flex justify-end gap-3 border-t border-white/8 px-6 py-4">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition"
-                        >
+                        <button type="button" onClick={onClose}
+                            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
                             Batal
                         </button>
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="rounded-xl bg-amber-400 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition"
-                        >
+                        <button type="submit" disabled={saving}
+                            className="rounded-xl bg-amber-400 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition">
                             {saving ? 'Menyimpan…' : isEdit ? 'Simpan Perubahan' : 'Buat Admin'}
                         </button>
                     </div>
@@ -264,7 +197,7 @@ function DeleteConfirm({ user, onClose, onDeleted }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
             <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
-                <h2 className="text-base font-semibold text-white">Hapus Admin?</h2>
+                <h2 className="text-base font-semibold text-white">Hapus AdminRegion?</h2>
                 <p className="mt-2 text-sm text-slate-400">
                     Akun <span className="text-white font-medium">{user.DisplayName}</span> ({user.Email}) akan dihapus
                     beserta kredensial login-nya. Tindakan ini tidak dapat dibatalkan.
@@ -287,7 +220,7 @@ function DeleteConfirm({ user, onClose, onDeleted }) {
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 
-export default function UserList({ user }) {
+export default function AdminRegionList({ user }) {
     const isSuperAdmin = user.role === 'SuperAdmin';
 
     const [data,    setData]    = useState(null);
@@ -295,16 +228,15 @@ export default function UserList({ user }) {
     const [error,   setError]   = useState(null);
     const [page,    setPage]    = useState(1);
     const [search,  setSearch]  = useState('');
-    const [role,    setRole]    = useState('');
-    const [query,   setQuery]   = useState({ search: '', role: '' });
+    const [query,   setQuery]   = useState('');
 
-    const [modalOpen,   setModalOpen]   = useState(false);
-    const [editTarget,  setEditTarget]  = useState(null);
+    const [modalOpen,    setModalOpen]    = useState(false);
+    const [editTarget,   setEditTarget]   = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
 
     const fetchUsers = useCallback(() => {
         setLoading(true);
-        api.get('/users', { page, ...query })
+        api.get('/users', { page, role: 'AdminRegion', search: query })
             .then(setData)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
@@ -315,7 +247,7 @@ export default function UserList({ user }) {
     function handleSearch(e) {
         e.preventDefault();
         setPage(1);
-        setQuery({ search, role });
+        setQuery(search);
     }
 
     function openCreate() {
@@ -328,15 +260,13 @@ export default function UserList({ user }) {
         setModalOpen(true);
     }
 
-    const roleFilterOptions = isSuperAdmin
-        ? [{ value: '', label: 'Semua role' }, ...ROLE_OPTIONS]
-        : [{ value: '', label: 'Semua role' }, { value: 'AdminRegion', label: 'AdminRegion' }, { value: 'AdminTransport', label: 'AdminTransport' }];
-
-    const COLUMNS = [
+    const columns = [
         { key: 'DisplayName', label: 'Nama' },
         { key: 'Email',       label: 'Email' },
-        { key: 'Role',        label: 'Role',   render: r => <StatusBadge value={r.Role} /> },
-        { key: 'Phone',       label: 'Telepon' },
+        { key: 'Region',      label: 'Region', render: r => <span className="font-medium text-teal-300">{r.Region || '—'}</span> },
+        { key: 'Phone',       label: 'Telepon', render: r => r.Phone || '—' },
+        { key: 'KioskCount',  label: 'Jumlah Kiosk', render: r => <span className="font-mono text-white">{r.KioskCount ?? 0}</span> },
+        { key: 'LastLoginAt', label: 'Login Terakhir', render: r => <span className="text-xs text-slate-400">{formatDateTime(r.LastLoginAt)}</span> },
         { key: 'CreatedAt',   label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
         ...(isSuperAdmin ? [{
             key: '_actions',
@@ -366,16 +296,14 @@ export default function UserList({ user }) {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between gap-4">
-                <h1 className="text-2xl font-semibold text-white">
-                    {user.role === 'AdminRegion' ? 'Regional Admins' : 'Admin Users'}
-                </h1>
+                <h1 className="text-2xl font-semibold text-white">Admin Region</h1>
                 {isSuperAdmin && (
                     <button
                         onClick={openCreate}
                         className="flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-300 transition"
                     >
                         <Plus size={16} />
-                        Tambah Admin
+                        Tambah AdminRegion
                     </button>
                 )}
             </div>
@@ -391,13 +319,6 @@ export default function UserList({ user }) {
                         className="w-full rounded-xl border border-white/10 bg-slate-950/50 pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-amber-400/30 transition"
                     />
                 </div>
-                <select
-                    value={role}
-                    onChange={e => setRole(e.target.value)}
-                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none"
-                >
-                    {roleFilterOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
                 <button type="submit" className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-300 transition">
                     Cari
                 </button>
@@ -407,11 +328,10 @@ export default function UserList({ user }) {
                 <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
             )}
 
-            <Table columns={COLUMNS} data={data?.data} loading={loading} emptyMessage="Tidak ada user admin ditemukan." />
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada AdminRegion ditemukan." />
             <Pagination meta={data} onPageChange={setPage} />
 
-            {/* Modals */}
-            <AdminUserModal
+            <AdminRegionModal
                 open={modalOpen}
                 onClose={() => setModalOpen(false)}
                 onSaved={fetchUsers}

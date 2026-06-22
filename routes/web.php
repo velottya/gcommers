@@ -3,16 +3,17 @@
 use App\Http\Controllers\Api\AppUserController;
 use App\Http\Controllers\Api\CostRateController;
 use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\DriverAssignmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
 use App\Http\Controllers\Api\TransportPartnerRateController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +30,8 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/orders',                     [OrderController::class, 'index']);
     Route::get('/orders/recap',               [OrderController::class, 'recap']);
     Route::get('/orders/{id}/bptp',           [OrderController::class, 'downloadBptp']);
+    Route::get('/orders/{id}/surat-jalan',    [OrderController::class, 'downloadSuratJalan']);
+    Route::post('/orders/{id}/cancel',        [OrderController::class, 'cancel']);
     Route::get('/orders/{id}',                [OrderController::class, 'show']);
 
     // Literal routes sebelum wildcard {id}
@@ -36,6 +39,7 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/products',                   [ProductController::class, 'index']);
     Route::post('/products',                  [ProductController::class, 'store']);
     Route::get('/products/{id}',              [ProductController::class, 'show'])->whereNumber('id');
+    Route::get('/products/{id}/kecamatan-status', [ProductController::class, 'kecamatanStatus'])->whereNumber('id');
     Route::put('/products/{id}',              [ProductController::class, 'update'])->whereNumber('id');
     Route::delete('/products/{id}',           [ProductController::class, 'destroy'])->whereNumber('id');
 
@@ -97,10 +101,16 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/quota-subsidi/{id}/submit', [SubsidyQuotaController::class, 'submit']);
     Route::post('/quota-subsidi/{id}/review', [SubsidyQuotaController::class, 'review']);
 
-    // Alokasi Sopir / Driver Assignment (AdminTransport)
-    Route::get('/driver-assignments',         [DriverAssignmentController::class, 'index']);
-    Route::post('/driver-assignments',        [DriverAssignmentController::class, 'store']);
-    Route::delete('/driver-assignments/{id}', [DriverAssignmentController::class, 'destroy']);
+    // Alokasi Sopir / Shipment tracking (AdminTransport)
+    Route::get('/shipments',                  [ShipmentController::class, 'index']);
+    Route::post('/shipments',                 [ShipmentController::class, 'store']);
+    Route::delete('/shipments/{orderId}',     [ShipmentController::class, 'destroy']);
+
+    // Daftar Gudang (AdminTransport + SuperAdmin)
+    Route::get('/warehouses',                 [WarehouseController::class, 'index']);
+    Route::post('/warehouses',                [WarehouseController::class, 'store']);
+    Route::put('/warehouses/{id}',            [WarehouseController::class, 'update']);
+    Route::delete('/warehouses/{id}',         [WarehouseController::class, 'destroy']);
 
     // Rekap & Tagihan Transport (AdminTransport + SuperAdmin)
     Route::get('/transport-billings',                    [TransportBillingController::class, 'index']);

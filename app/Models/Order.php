@@ -31,4 +31,43 @@ class Order extends Model
     {
         return $this->hasMany(OrderEvent::class, 'OrderId', 'Id');
     }
+
+    public function shipment()
+    {
+        return $this->hasOne(Shipment::class, 'OrderId', 'Id');
+    }
+
+    /**
+     * 2 status pembayaran: pending | paid. Diturunkan dari PaidAt, bukan kolom
+     * tersendiri, supaya tidak ada dua sumber kebenaran yang bisa tidak sinkron.
+     */
+    public function getPaymentStatusAttribute(): string
+    {
+        return $this->PaidAt ? 'paid' : 'pending';
+    }
+
+    /**
+     * 4 status pemesanan (hanya berarti setelah PaymentStatus = paid):
+     * processing | shipping | delivered | cancelled.
+     *
+     * Diutamakan dari kolom OrderStatus. Jika belum diisi oleh sistem yang membuat
+     * order (mis. saat fitur ini baru diadopsi di sisi Flutter), turunkan dari
+     * Shipment terkait, lalu fallback ke PaidAt, supaya tampilan tetap benar.
+     */
+    public function getEffectiveOrderStatusAttribute(): ?string
+    {
+        if ($this->OrderStatus) {
+            return $this->OrderStatus;
+        }
+
+        if ($this->relationLoaded('shipment') && $this->shipment) {
+            return match ($this->shipment->Status) {
+                Shipment::STATUS_SIAP_MUAT, Shipment::STATUS_DALAM_PERJALANAN => $this->shipment->Status === Shipment::STATUS_DALAM_PERJALANAN ? 'shipping' : 'processing',
+                Shipment::STATUS_SELESAI => 'delivered',
+                default => null,
+            };
+        }
+
+        return $this->PaidAt ? 'processing' : null;
+    }
 }

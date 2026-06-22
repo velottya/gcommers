@@ -152,6 +152,7 @@ class UserController extends Controller
             $validated['CompanyName'] = $validated['CompanyName'] ?? '';
             $validated['TransportirName'] = $validated['TransportirName'] ?? '';
             $validated['PoliceNumber'] = $validated['PoliceNumber'] ?? '';
+            $validated['Region'] = $validated['Region'] ?? '';
         }
 
         if ($validated['Role'] === 'SuperAdmin') {
@@ -203,7 +204,9 @@ class UserController extends Controller
 
     private function userPayload(User $user): array
     {
-        return [
+        $credential = AdminCredential::where('user_id', (string) $user->Id)->first();
+
+        $payload = [
             'Id' => $user->Id,
             'Email' => (string) $user->Email,
             'DisplayName' => (string) $user->DisplayName,
@@ -217,6 +220,20 @@ class UserController extends Controller
             'PicName' => $user->PicName !== null ? (string) $user->PicName : null,
             'CreatedAt' => optional($user->CreatedAt)->toISOString(),
             'UpdatedAt' => optional($user->UpdatedAt)->toISOString(),
+            'LastLoginAt' => optional($credential?->last_login_at)->toISOString(),
         ];
+
+        if ($user->Role === 'AdminRegion' && $user->Region) {
+            $payload['KioskCount'] = User::where('Role', 'kiosk')->where('Region', $user->Region)->count();
+        }
+
+        if ($user->Role === 'AdminTransport' && $user->CompanyName) {
+            $payload['DriverCount'] = User::where('Role', 'transportir')
+                ->whereNotNull('Type')
+                ->where('CompanyName', $user->CompanyName)
+                ->count();
+        }
+
+        return $payload;
     }
 }

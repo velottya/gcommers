@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
-import StatusBadge from '../ui/StatusBadge';
+import { OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
 
 function formatRupiah(val) {
     if (val == null) return '—';
@@ -19,14 +19,21 @@ function orderField(order, camelKey, pascalKey) {
     return order?.[camelKey] ?? order?.[pascalKey] ?? null;
 }
 
-const STATUS_OPTIONS = ['', 'pending', 'processing', 'on_delivery', 'delivered', 'cancelled'];
+const ORDER_STATUS_OPTIONS = [
+    { value: '', label: 'Semua status pemesanan' },
+    { value: 'processing', label: 'Sedang Diproses' },
+    { value: 'shipping', label: 'Dalam Perjalanan' },
+    { value: 'delivered', label: 'Pemesanan Selesai' },
+    { value: 'cancelled', label: 'Dibatalkan' },
+];
 
 const COLUMNS = (navigate) => [
     { key: 'poNumber',    label: 'PO Number',  render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
     { key: 'userEmail',   label: 'Email',      render: r => orderField(r, 'userEmail', 'UserEmail') },
     { key: 'vendor',      label: 'Vendor',     render: r => orderField(r, 'vendor', 'Vendor') },
     { key: 'totalAmount', label: 'Total',      render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
-    { key: 'status',      label: 'Status',     render: r => <StatusBadge value={orderField(r, 'status', 'Status')} /> },
+    { key: 'paymentStatus', label: 'Pembayaran', render: r => <PaymentStatusBadge value={orderField(r, 'paymentStatus', 'PaymentStatus')} /> },
+    { key: 'orderStatus', label: 'Status Pemesanan', render: r => <OrderStatusBadge value={orderField(r, 'orderStatus', 'OrderStatus')} /> },
     { key: 'createdAt',   label: 'Tanggal',    render: r => formatDate(orderField(r, 'createdAt', 'CreatedAt')) },
     {
         key: '_action',
@@ -49,8 +56,8 @@ export default function OrderList({ user }) {
     const [error,   setError]       = useState(null);
     const [page,    setPage]        = useState(1);
     const [search,  setSearch]      = useState('');
-    const [status,  setStatus]      = useState('');
-    const [query,   setQuery]       = useState({ search: '', status: '' });
+    const [orderStatus, setOrderStatus] = useState('');
+    const [query,   setQuery]       = useState({ search: '', orderStatus: '' });
 
     const fetchOrders = useCallback(() => {
         setLoading(true);
@@ -65,7 +72,7 @@ export default function OrderList({ user }) {
     function handleSearch(e) {
         e.preventDefault();
         setPage(1);
-        setQuery({ search, status });
+        setQuery({ search, orderStatus });
     }
 
     const pageTitle = user.role === 'AdminTransport' ? 'Assigned Orders' : 'Daftar Order';
@@ -91,12 +98,12 @@ export default function OrderList({ user }) {
                     />
                 </div>
                 <select
-                    value={status}
-                    onChange={e => setStatus(e.target.value)}
+                    value={orderStatus}
+                    onChange={e => setOrderStatus(e.target.value)}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition"
                 >
-                    {STATUS_OPTIONS.map(s => (
-                        <option key={s} value={s}>{s || 'Semua status'}</option>
+                    {ORDER_STATUS_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                 </select>
                 <button

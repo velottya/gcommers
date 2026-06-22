@@ -1,12 +1,22 @@
-import { ArrowLeft, CalendarDays, FileText, Layers3, Package, Scale } from 'lucide-react';
+import { ArrowLeft, CalendarDays, FileText, Layers3, MapPin, Package, Scale } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import StatusBadge from '../ui/StatusBadge';
+import { Table } from '../ui/Table';
 
 function formatDate(val) {
     if (!val) return '—';
     return new Date(val).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatRupiah(val) {
+    if (val == null) return '—';
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+}
+
+function fTon(val) {
+    return val == null ? '—' : `${Number(val).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
 }
 
 function InfoCard({ icon: Icon, label, value }) {
@@ -30,11 +40,23 @@ export default function ProductDetail() {
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState(null);
 
+    const [kecamatanStatus,    setKecamatanStatus]    = useState([]);
+    const [kecamatanLoading,   setKecamatanLoading]   = useState(true);
+    const [kecamatanError,     setKecamatanError]     = useState(null);
+
     useEffect(() => {
         api.get(`/products/${id}`)
             .then(setProduct)
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
+    }, [id]);
+
+    useEffect(() => {
+        setKecamatanLoading(true);
+        api.get(`/products/${id}/kecamatan-status`)
+            .then(setKecamatanStatus)
+            .catch(e => setKecamatanError(e.message))
+            .finally(() => setKecamatanLoading(false));
     }, [id]);
 
     if (loading) {
@@ -54,6 +76,21 @@ export default function ProductDetail() {
             </div>
         );
     }
+
+    const kecamatanColumns = [
+        { key: 'kecamatan',         label: 'Kecamatan',          render: r => <span className="font-medium text-white">{r.kecamatan}</span> },
+        { key: 'region',           label: 'Region',             render: r => r.region || '—' },
+        { key: 'harga_satuan',     label: 'Harga Satuan/kg',    render: r => formatRupiah(r.harga_satuan) },
+        { key: 'biaya_pengiriman', label: 'Ongkir/kg',          render: r => formatRupiah(r.biaya_pengiriman) },
+        { key: 'transport_partner',label: 'Mitra Transportir',  render: r => r.transport_partner || '—' },
+        { key: 'period',           label: 'Periode Kuota',      render: r => r.period || '—' },
+        { key: 'quota_ton',        label: 'Kuota',              render: r => fTon(r.quota_ton) },
+        { key: 'used_ton',         label: 'Terpakai',           render: r => fTon(r.used_ton) },
+        {
+            key: 'remaining_ton', label: 'Sisa',
+            render: r => <span className="font-semibold text-emerald-300">{fTon(r.remaining_ton)}</span>,
+        },
+    ];
 
     return (
         <div className="space-y-6">
@@ -102,27 +139,28 @@ export default function ProductDetail() {
                         </p>
                     </section>
                 </div>
-
-                <aside className="space-y-6">
-                    <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Detail Lainnya</h2>
-                        <div className="space-y-3 text-sm text-slate-300">
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Jenis</span>
-                                <span className="font-semibold text-white">{product?.jenis || '—'}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Status</span>
-                                <StatusBadge value={product?.status} />
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                                <span>Foto</span>
-                                <span className="font-semibold text-white">{product?.foto || '—'}</span>
-                            </div>
-                        </div>
-                    </section>
-                </aside>
             </div>
+
+            {/* Stok & harga real-time per kecamatan */}
+            <section className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
+                <div className="mb-4 flex items-center gap-2">
+                    <MapPin size={16} className="text-amber-400" />
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Stok &amp; Harga per Kecamatan
+                    </h2>
+                </div>
+                {kecamatanError && (
+                    <div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                        {kecamatanError}
+                    </div>
+                )}
+                <Table
+                    columns={kecamatanColumns}
+                    data={kecamatanStatus}
+                    loading={kecamatanLoading}
+                    emptyMessage="Belum ada harga/kuota yang disetujui untuk produk ini di kecamatan manapun."
+                />
+            </section>
         </div>
     );
 }

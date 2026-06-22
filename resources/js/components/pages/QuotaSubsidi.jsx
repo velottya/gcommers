@@ -719,16 +719,6 @@ function ListView({ user, onNew, onEdit, onView }) {
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
                 </select>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500">Dari</label>
-                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
-                </div>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-500">Sampai</label>
-                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                        className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
-                </div>
                 <button type="submit"
                     className="rounded-xl border border-white/10 bg-slate-800 px-4 py-2.5 text-sm text-slate-300 hover:text-white transition">
                     Filter
