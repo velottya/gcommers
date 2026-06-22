@@ -93,7 +93,7 @@ class SubsidyQuotaController extends Controller
         $exists = SubsidyQuotaSubmission::where('region', $user->Region)
                                          ->where('period', $validated['period'])
                                          ->exists();
-        abort_if($exists, 422, "Ajuan quota untuk region {$user->Region} periode {$validated['period']} sudah ada. Edit ajuan yang sudah ada untuk merevisi alokasinya.");
+        abort_if($exists, 422, "Ajuan quota untuk region {$user->Region} tahun {$validated['period']} sudah ada. Edit ajuan yang sudah ada untuk merevisi alokasinya.");
 
         $submission = null;
 
@@ -305,11 +305,10 @@ class SubsidyQuotaController extends Controller
     private function validatePayload(Request $request): array
     {
         return $request->validate([
-            'period'                                         => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
+            'period'                                         => ['required', 'regex:/^\d{4}$/'],
             'notes'                                          => 'nullable|string|max:1000',
             'products'                                       => 'required|array|min:1',
             'products.*.product_id'                          => 'required|integer|exists:product_master,id',
-            'products.*.total_qty_ton'                       => 'required|numeric|min:0.01',
             'products.*.kecamatan_allocations'                => 'required|array|min:1',
             'products.*.kecamatan_allocations.*.kecamatan'    => 'required|string|max:150',
             'products.*.kecamatan_allocations.*.qty_ton'      => 'required|numeric|min:0.01',
@@ -319,13 +318,15 @@ class SubsidyQuotaController extends Controller
     private function syncProducts(SubsidyQuotaSubmission $submission, array $products): void
     {
         foreach ($products as $p) {
-            $product      = Product::findOrFail($p['product_id']);
+            $product     = Product::findOrFail($p['product_id']);
+            $totalQtyTon = array_sum(array_column($p['kecamatan_allocations'], 'qty_ton'));
+
             $quotaProduct = SubsidyQuotaProduct::create([
                 'submission_id' => $submission->id,
                 'product_id'    => $product->id,
                 'product_code'  => $product->kode_produk,
                 'product_name'  => $product->nama_produk,
-                'total_qty_ton' => $p['total_qty_ton'],
+                'total_qty_ton' => $totalQtyTon,
             ]);
 
             foreach ($p['kecamatan_allocations'] as $alloc) {

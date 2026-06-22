@@ -37,6 +37,7 @@ const MENUS = {
         { icon: ShoppingCart,    label: 'Rekap Pesanan Kiosk', path: '/orders' },
         { icon: Package,         label: 'Produk',              path: '/products' },
         { icon: Wallet,          label: 'Alokasi Biaya',       path: '/alokasi-biaya' },
+        { icon: Truck,           label: 'Tarif Transportir',   path: '/tarif-transportir' },
         { icon: Coins,           label: 'Quota Subsidi',       path: '/quota-subsidi' },
         { icon: Users,           label: 'Daftar Admin Region', path: '/users' },
         { icon: Store,           label: 'Daftar Kiosk',        path: '/app-users' },

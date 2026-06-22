@@ -36,7 +36,7 @@ class KecamatanProductStock extends Model
 
     /**
      * Total kuantitas (TON) yang sudah terpakai oleh pesanan kiosk di kecamatan ini,
-     * untuk produk & periode (bulan) yang sama. Dihitung langsung dari Orders/OrderItems
+     * untuk produk & periode (tahun) yang sama. Dihitung langsung dari Orders/OrderItems
      * tiap kali dipanggil — bukan counter tersimpan — karena pesanan dibuat oleh sistem
      * lain (bukan admin console ini), jadi tidak bisa diandalkan untuk hook saat order dibuat.
      */
@@ -62,8 +62,8 @@ class KecamatanProductStock extends Model
 
     private static function periodRange(string $period): array
     {
-        $start = Carbon::createFromFormat('Y-m', $period)->startOfMonth();
+        $start = Carbon::createFromFormat('Y', $period)->startOfYear();
 
-        return [$start, $start->copy()->endOfMonth()];
+        return [$start, $start->copy()->endOfYear()];
     }
 }

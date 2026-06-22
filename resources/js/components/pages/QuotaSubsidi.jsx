@@ -26,26 +26,26 @@ function fTon(val) {
     return val == null ? '—' : `${Number(val).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
 }
 
-const MONTHS_ID = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-];
-
 function formatPeriod(period) {
-    if (!period) return '—';
-    const [y, m] = period.split('-');
-    return `${MONTHS_ID[parseInt(m, 10) - 1] ?? m} ${y}`;
+    return period || '—';
 }
 
 function currentPeriod() {
-    return new Date().toISOString().slice(0, 7);
+    return String(new Date().getFullYear());
 }
 
 let _uid = 0;
 const nextUid = () => ++_uid;
 
 function emptyProduct() {
-    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', total_qty_ton: '', kecamatan_allocations: [] };
+    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', kecamatan_allocations: [] };
+}
+
+function sumQtyTon(products) {
+    return products.reduce(
+        (sum, p) => sum + p.kecamatan_allocations.reduce((s, k) => s + (parseFloat(k.qty_ton) || 0), 0),
+        0
+    );
 }
 
 function emptyAlloc() {
@@ -88,11 +88,6 @@ function ErrBanner({ msg }) {
 function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
     const [open, setOpen] = useState(true);
 
-    const allocated = p.kecamatan_allocations.reduce((s, k) => s + (parseFloat(k.qty_ton) || 0), 0);
-    const total     = parseFloat(p.total_qty_ton) || 0;
-    const remaining = total - allocated;
-    const overAllocated = remaining < -0.001;
-
     // Kecamatan yang belum dialokasikan untuk produk ini
     const usedKecamatan = new Set(p.kecamatan_allocations.map(k => k.kecamatan));
     const availKecamatan = kecamatanList.filter(k => !usedKecamatan.has(k));
@@ -134,17 +129,10 @@ function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                     <p className="text-xs text-slate-500 font-mono">{p.product_code}</p>
                 </div>
                 {!readOnly && (
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <label className="text-xs text-slate-400 whitespace-nowrap">Total quota (TON)</label>
-                            <Inp type="number" min="0.01" step="0.01" value={p.total_qty_ton} className="w-28"
-                                onChange={e => onChange({ ...p, total_qty_ton: e.target.value })} />
-                        </div>
-                        <button type="button" onClick={onRemove}
-                            className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
-                            <Trash2 size={15} />
-                        </button>
-                    </div>
+                    <button type="button" onClick={onRemove}
+                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
+                        <Trash2 size={15} />
+                    </button>
                 )}
                 {readOnly && (
                     <span className="text-sm font-semibold text-amber-300">{fTon(p.total_qty_ton)}</span>
@@ -157,18 +145,10 @@ function ProductRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                     <div className="flex items-center justify-between">
                         <p className="text-xs font-medium text-slate-400">Alokasi per Kecamatan</p>
                         {!readOnly && (
-                            <div className="flex items-center gap-3">
-                                {total > 0 && (
-                                    <span className={`text-xs font-mono ${overAllocated ? 'text-red-400' : 'text-slate-500'}`}>
-                                        {overAllocated ? '⚠ ' : ''}Dialokasikan: {fTon(allocated)} / {fTon(total)}
-                                        {!overAllocated && remaining > 0.001 && ` · sisa ${fTon(remaining)}`}
-                                    </span>
-                                )}
-                                <button type="button" onClick={addKecamatan} disabled={!availKecamatan.length}
-                                    className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                                    <Plus size={11} /> Tambah Kecamatan
-                                </button>
-                            </div>
+                            <button type="button" onClick={addKecamatan} disabled={!availKecamatan.length}
+                                className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                                <Plus size={11} /> Tambah Kecamatan
+                            </button>
                         )}
                     </div>
 
@@ -278,7 +258,6 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                         product_id:   p.product_id,
                         product_code: p.product_code,
                         product_name: p.product_name,
-                        total_qty_ton: String(p.total_qty_ton),
                         kecamatan_allocations: (p.kecamatan_allocations ?? []).map(k => ({
                             _uid:      nextUid(),
                             kecamatan: k.kecamatan,
@@ -319,7 +298,6 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
             notes:  formNotes || null,
             products: formProducts.map(p => ({
                 product_id:            p.product_id,
-                total_qty_ton:         parseFloat(p.total_qty_ton),
                 kecamatan_allocations: p.kecamatan_allocations.map(k => ({
                     kecamatan: k.kecamatan,
                     qty_ton:   parseFloat(k.qty_ton),
@@ -390,8 +368,8 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                 {/* Header fields */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-400">Periode</label>
-                        <Inp type="month" value={formPeriod}
+                        <label className="block text-xs font-medium text-slate-400">Tahun</label>
+                        <Inp type="number" min="2024" max="2100" step="1" value={formPeriod}
                             onChange={e => setFormPeriod(e.target.value)} />
                     </div>
                     <div className="space-y-1">
@@ -431,6 +409,10 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                                     onRemove={() => removeProduct(p._uid)}
                                     readOnly={false} />
                             ))}
+                            <div className="flex items-center justify-between rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3">
+                                <span className="text-sm text-slate-300">Total Seluruh Quota</span>
+                                <span className="text-base font-semibold text-amber-300">{fTon(sumQtyTon(formProducts))}</span>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -590,6 +572,16 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                         })),
                     }} kecamatanList={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
                 ))}
+                {(detail?.products?.length ?? 0) > 0 && (
+                    <div className="flex items-center justify-between rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3">
+                        <span className="text-sm text-slate-300">Total Seluruh Quota</span>
+                        <span className="text-base font-semibold text-amber-300">
+                            {fTon(sumQtyTon((detail?.products ?? []).map(p => ({
+                                kecamatan_allocations: p.kecamatan_allocations ?? [],
+                            }))))}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -641,7 +633,7 @@ function ListView({ user, onNew, onEdit, onView }) {
     }
 
     const columns = [
-        { key: 'period', label: 'Periode', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
+        { key: 'period', label: 'Tahun', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
         { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
         { key: 'products_count', label: 'Produk',   render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
@@ -694,7 +686,7 @@ function ListView({ user, onNew, onEdit, onView }) {
                     <h1 className="text-2xl font-semibold text-white">Alokasi Quota Subsidi</h1>
                     <p className="mt-1 text-sm text-slate-500">
                         {isAdminRegion
-                            ? `Kelola quota pupuk subsidi bulanan per kecamatan di region ${user.region}.`
+                            ? `Kelola quota pupuk subsidi tahunan per kecamatan di region ${user.region}.`
                             : 'Pantau quota pupuk subsidi dari semua region.'}
                     </p>
                 </div>
@@ -717,8 +709,8 @@ function ListView({ user, onNew, onEdit, onView }) {
                 });
             }}
                 className="flex flex-wrap items-center gap-3">
-                <input type="month" value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
-                    className="w-40 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
+                <input type="number" min="2024" max="2100" placeholder="Tahun" value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
+                    className="w-28 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition" />
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
                     <option value="">Semua status</option>

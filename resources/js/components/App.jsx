@@ -16,6 +16,7 @@ import ProductList from './pages/ProductList';
 import QuotaSubsidi from './pages/QuotaSubsidi';
 import RekapTagihan from './pages/RekapTagihan';
 import SystemSettings from './pages/SystemSettings';
+import TarifTransportir from './pages/TarifTransportir';
 import TransportProfile from './pages/TransportProfile';
 import UserList from './pages/UserList';
 
@@ -77,6 +78,9 @@ export default function App({ user }) {
                     {/* ─── AdminRegion only ─── */}
                     {role === 'AdminRegion' && (
                         <Route path="/alokasi-biaya"  element={<AlokasiBiaya user={user} />} />
+                    )}
+                    {role === 'AdminRegion' && (
+                        <Route path="/tarif-transportir" element={<TarifTransportir user={user} />} />
                     )}
                     <Route
                         path="/ajuan-stok"

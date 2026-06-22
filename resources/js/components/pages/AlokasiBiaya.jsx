@@ -34,7 +34,7 @@ function emptyProduct() {
 }
 
 function emptyRate() {
-    return { _uid: nextUid(), kecamatan: '', harga_satuan: '', biaya_pengiriman: '' };
+    return { _uid: nextUid(), kecamatan: '', harga_satuan: '', transport_partner: '' };
 }
 
 function groupItemsByProduct(items) {
@@ -53,6 +53,7 @@ function groupItemsByProduct(items) {
             _uid:              nextUid(),
             kecamatan:         it.kecamatan,
             harga_satuan:      String(it.harga_satuan),
+            transport_partner: it.transport_partner,
             biaya_pengiriman:  String(it.biaya_pengiriman),
             status:            it.status,
         });
@@ -93,7 +94,7 @@ function ErrBanner({ msg }) {
 
 // ─── ProductRateRow (dalam form edit) ─────────────────────────────────────────
 
-function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
+function ProductRateRow({ p, kecamatanList, partners, onChange, onRemove, readOnly }) {
     const [open, setOpen] = useState(true);
 
     const usedKecamatan = new Set(p.rates.map(r => r.kecamatan));
@@ -113,6 +114,10 @@ function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
 
     function removeRate(uid) {
         onChange({ ...p, rates: p.rates.filter(r => r._uid !== uid) });
+    }
+
+    function partnerRate(companyName) {
+        return partners?.find(pt => pt.company_name === companyName)?.shipping_cost_per_kg ?? null;
     }
 
     return (
@@ -154,13 +159,16 @@ function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                                 <thead>
                                     <tr className="text-xs text-slate-500 border-b border-white/8">
                                         <th className="text-left pb-2 font-medium">Kecamatan</th>
-                                        <th className="text-left pb-2 font-medium w-40">Harga Satuan (Rp/kg)</th>
-                                        <th className="text-left pb-2 font-medium w-40">Biaya Pengiriman (Rp/kg)</th>
+                                        <th className="text-left pb-2 font-medium w-36">Harga Satuan (Rp/kg)</th>
+                                        <th className="text-left pb-2 font-medium w-48">Mitra Transportir</th>
+                                        <th className="text-left pb-2 font-medium w-36">Biaya Kirim (Rp/kg)</th>
                                         {!readOnly && <th className="w-8" />}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {p.rates.map(r => (
+                                    {p.rates.map(r => {
+                                    const shippingRate = readOnly ? r.biaya_pengiriman : partnerRate(r.transport_partner);
+                                    return (
                                         <tr key={r._uid}>
                                             <td className="py-2 pr-3">
                                                 {readOnly ? (
@@ -194,10 +202,22 @@ function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                                             </td>
                                             <td className="py-2 pr-3">
                                                 {readOnly ? (
-                                                    <span className="font-mono text-white">{fRupiah(r.biaya_pengiriman)}</span>
+                                                    <p className="text-white">{r.transport_partner || '—'}</p>
                                                 ) : (
-                                                    <Inp type="number" min="0" step="1" value={r.biaya_pengiriman}
-                                                        onChange={e => updateRate(r._uid, 'biaya_pengiriman', e.target.value)} />
+                                                    <Sel value={r.transport_partner}
+                                                        onChange={e => updateRate(r._uid, 'transport_partner', e.target.value)}>
+                                                        <option value="">-- Pilih Mitra --</option>
+                                                        {(partners ?? []).map(pt => (
+                                                            <option key={pt.company_name} value={pt.company_name}>{pt.company_name}</option>
+                                                        ))}
+                                                    </Sel>
+                                                )}
+                                            </td>
+                                            <td className="py-2 pr-3">
+                                                {shippingRate != null ? (
+                                                    <span className="font-mono text-white">{fRupiah(shippingRate)}</span>
+                                                ) : (
+                                                    <span className="text-xs text-amber-400 italic">Belum ada tarif</span>
                                                 )}
                                             </td>
                                             {!readOnly && (
@@ -209,7 +229,8 @@ function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
                                                 </td>
                                             )}
                                         </tr>
-                                    ))}
+                                    );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -223,11 +244,11 @@ function ProductRateRow({ p, kecamatanList, onChange, onRemove, readOnly }) {
 // ─── FormView ─────────────────────────────────────────────────────────────────
 
 function FormView({ editId, userRegion, onBack, onSaved }) {
-    const [pphPersen,    setPphPersen]    = useState('');
     const [formNotes,    setFormNotes]    = useState('');
     const [formProducts, setFormProducts] = useState([]);
     const [products,     setProducts]     = useState([]);
     const [kecamatanList, setKecamatanList] = useState([]);
+    const [partners,     setPartners]     = useState([]);
     const [refLoading,   setRefLoading]   = useState(true);
     const [saving,       setSaving]       = useState(false);
     const [submitting,   setSubmitting]   = useState(false);
@@ -242,21 +263,19 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
         const tasks = [
             api.get('/products', { status: 'Aktif', per_page: 100 }),
             api.get('/cost-rates/kecamatan'),
-            api.get('/settings/fees-view'),
+            api.get('/transport-partner-rates'),
         ];
         if (editId) tasks.push(api.get(`/cost-rates/${editId}`));
 
         Promise.all(tasks)
-            .then(([prodRes, kecamatanRes, feesRes, detailRes]) => {
+            .then(([prodRes, kecamatanRes, partnersRes, detailRes]) => {
                 setProducts(Array.isArray(prodRes) ? prodRes : (prodRes.data ?? []));
                 setKecamatanList(kecamatanRes ?? []);
+                setPartners(partnersRes ?? []);
 
                 if (detailRes) {
-                    setPphPersen(String(detailRes.pph_persen ?? ''));
                     setFormNotes(detailRes.notes ?? '');
                     setFormProducts(groupItemsByProduct(detailRes.items));
-                } else {
-                    setPphPersen(String(feesRes?.pph_persen ?? ''));
                 }
             })
             .catch(e => setError(e.message || 'Gagal memuat data.'))
@@ -287,14 +306,13 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
 
     function buildPayload() {
         return {
-            pph_persen: parseFloat(pphPersen),
-            notes:      formNotes || null,
+            notes: formNotes || null,
             products: formProducts.map(p => ({
                 product_id: p.product_id,
                 rates: p.rates.map(r => ({
-                    kecamatan:        r.kecamatan,
-                    harga_satuan:     parseFloat(r.harga_satuan),
-                    biaya_pengiriman: parseFloat(r.biaya_pengiriman),
+                    kecamatan:         r.kecamatan,
+                    harga_satuan:      parseFloat(r.harga_satuan),
+                    transport_partner: r.transport_partner,
                 })),
             })),
         };
@@ -357,17 +375,10 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
             <ErrBanner msg={error} />
 
             <form onSubmit={handleSave} className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-400">PPh Region (%)</label>
-                        <Inp type="number" min="0" max="100" step="0.01" value={pphPersen}
-                            onChange={e => setPphPersen(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="block text-xs font-medium text-slate-400">Catatan (opsional)</label>
-                        <Inp type="text" value={formNotes} onChange={e => setFormNotes(e.target.value)}
-                            placeholder="Keterangan tambahan…" />
-                    </div>
+                <div className="space-y-1">
+                    <label className="block text-xs font-medium text-slate-400">Catatan (opsional)</label>
+                    <Inp type="text" value={formNotes} onChange={e => setFormNotes(e.target.value)}
+                        placeholder="Keterangan tambahan…" />
                 </div>
 
                 <div className="space-y-3">
@@ -389,7 +400,7 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     ) : (
                         <div className="space-y-3">
                             {formProducts.map(p => (
-                                <ProductRateRow key={p._uid} p={p} kecamatanList={kecamatanList}
+                                <ProductRateRow key={p._uid} p={p} kecamatanList={kecamatanList} partners={partners}
                                     onChange={newP => updateProduct(p._uid, newP)}
                                     onRemove={() => removeProduct(p._uid)}
                                     readOnly={false} />
@@ -472,7 +483,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                         <div className="mt-1 flex items-center gap-3">
                             <StatusChip value={detail?.status} />
                             <span className="text-sm text-slate-500">
-                                PPh {detail?.pph_persen}% · Diajukan oleh {detail?.submitted_by}
+                                Diajukan oleh {detail?.submitted_by}
                             </span>
                         </div>
                     </div>
@@ -589,7 +600,6 @@ function ListView({ user, onNew, onEdit, onView }) {
 
     const columns = [
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
-        { key: 'pph_persen',     label: 'PPh %', render: r => <span className="font-mono text-white">{r.pph_persen}%</span> },
         { key: 'items_count',   label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
         { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400 truncate block max-w-[140px]">{r.submitted_by}</span> },
@@ -637,7 +647,7 @@ function ListView({ user, onNew, onEdit, onView }) {
                     <h1 className="text-2xl font-semibold text-white">Alokasi Biaya</h1>
                     <p className="mt-1 text-sm text-slate-500">
                         {isAdminRegion
-                            ? `Tentukan harga satuan, biaya pengiriman per kecamatan, dan PPh region di ${user.region}.`
+                            ? `Tentukan harga satuan per kecamatan dan mitra transportir pengirim di ${user.region}.`
                             : 'Pantau tarif biaya dari semua region.'}
                     </p>
                 </div>

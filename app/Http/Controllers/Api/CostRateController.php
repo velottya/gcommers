@@ -7,6 +7,7 @@ use App\Models\CostRateItem;
 use App\Models\CostRateSubmission;
 use App\Models\KecamatanProductPrice;
 use App\Models\Product;
+use App\Models\TransportPartnerRate;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -82,7 +83,6 @@ class CostRateController extends Controller
         DB::transaction(function () use ($validated, $user, &$submission) {
             $submission = CostRateSubmission::create([
                 'region'       => $user->Region,
-                'pph_persen'   => $validated['pph_persen'],
                 'status'       => 'draft',
                 'notes'        => $validated['notes'] ?? null,
                 'submitted_by' => $user->Email,
@@ -112,9 +112,8 @@ class CostRateController extends Controller
 
         DB::transaction(function () use ($submission, $validated) {
             $submission->update([
-                'pph_persen' => $validated['pph_persen'],
-                'notes'      => $validated['notes'] ?? null,
-                'status'     => 'draft',
+                'notes'  => $validated['notes'] ?? null,
+                'status' => 'draft',
             ]);
 
             $submission->items()->delete();
@@ -211,14 +210,13 @@ class CostRateController extends Controller
     private function validatePayload(Request $request): array
     {
         return $request->validate([
-            'pph_persen'                          => 'required|numeric|min:0|max:100',
-            'notes'                                => 'nullable|string|max:1000',
-            'products'                             => 'required|array|min:1',
-            'products.*.product_id'                => 'required|integer|exists:product_master,id',
-            'products.*.rates'                     => 'required|array|min:1',
-            'products.*.rates.*.kecamatan'          => 'required|string|max:150',
-            'products.*.rates.*.harga_satuan'       => 'required|numeric|min:0',
-            'products.*.rates.*.biaya_pengiriman'   => 'required|numeric|min:0',
+            'notes'                                  => 'nullable|string|max:1000',
+            'products'                               => 'required|array|min:1',
+            'products.*.product_id'                  => 'required|integer|exists:product_master,id',
+            'products.*.rates'                       => 'required|array|min:1',
+            'products.*.rates.*.kecamatan'            => 'required|string|max:150',
+            'products.*.rates.*.harga_satuan'         => 'required|numeric|min:0',
+            'products.*.rates.*.transport_partner'    => 'required|string|max:200',
         ]);
     }
 
@@ -256,14 +254,14 @@ class CostRateController extends Controller
             KecamatanProductPrice::updateOrCreate(
                 ['kecamatan' => $item->kecamatan, 'product_id' => $item->product_id],
                 [
-                    'region'           => $submission->region,
-                    'product_code'     => $item->product_code,
-                    'product_name'     => $item->product_name,
-                    'harga_satuan'     => $item->harga_satuan,
-                    'biaya_pengiriman' => $item->biaya_pengiriman,
-                    'pph_persen'       => $submission->pph_persen,
-                    'submission_id'    => $submission->id,
-                    'approved_at'      => now(),
+                    'region'            => $submission->region,
+                    'product_code'      => $item->product_code,
+                    'product_name'      => $item->product_name,
+                    'harga_satuan'      => $item->harga_satuan,
+                    'biaya_pengiriman'  => $item->biaya_pengiriman,
+                    'transport_partner' => $item->transport_partner,
+                    'submission_id'     => $submission->id,
+                    'approved_at'       => now(),
                 ]
             );
         }
@@ -275,14 +273,25 @@ class CostRateController extends Controller
             $product = Product::findOrFail($p['product_id']);
 
             foreach ($p['rates'] as $rate) {
+                $shippingCost = TransportPartnerRate::where('region', $submission->region)
+                    ->where('company_name', $rate['transport_partner'])
+                    ->value('shipping_cost_per_kg');
+
+                abort_if(
+                    $shippingCost === null,
+                    422,
+                    "Belum ada tarif untuk mitra {$rate['transport_partner']}, atur dulu di halaman Tarif Mitra Transportir."
+                );
+
                 CostRateItem::create([
                     'submission_id'     => $submission->id,
                     'product_id'        => $product->id,
                     'product_code'      => $product->kode_produk,
                     'product_name'      => $product->nama_produk,
                     'kecamatan'         => $rate['kecamatan'],
+                    'transport_partner' => $rate['transport_partner'],
                     'harga_satuan'      => $rate['harga_satuan'],
-                    'biaya_pengiriman'  => $rate['biaya_pengiriman'],
+                    'biaya_pengiriman'  => $shippingCost,
                 ]);
             }
         }

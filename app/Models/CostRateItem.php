@@ -11,7 +11,7 @@ class CostRateItem extends Model
 
     protected $fillable = [
         'submission_id', 'product_id', 'product_code', 'product_name',
-        'kecamatan', 'harga_satuan', 'biaya_pengiriman', 'status',
+        'kecamatan', 'transport_partner', 'harga_satuan', 'biaya_pengiriman', 'status',
     ];
 
     protected function casts(): array

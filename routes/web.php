@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
+use App\Http\Controllers\Api\TransportPartnerRateController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
@@ -80,6 +81,10 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::delete('/cost-rates/{id}',       [CostRateController::class, 'destroy']);
     Route::post('/cost-rates/{id}/submit',  [CostRateController::class, 'submit']);
     Route::post('/cost-rates/{id}/review',  [CostRateController::class, 'review']);
+
+    // Tarif Mitra Transportir (AdminRegion, referensi langsung tanpa approval)
+    Route::get('/transport-partner-rates',  [TransportPartnerRateController::class, 'index']);
+    Route::post('/transport-partner-rates', [TransportPartnerRateController::class, 'store']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
     Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);

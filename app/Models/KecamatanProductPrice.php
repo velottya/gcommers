@@ -11,7 +11,7 @@ class KecamatanProductPrice extends Model
 
     protected $fillable = [
         'region', 'kecamatan', 'product_id', 'product_code', 'product_name',
-        'harga_satuan', 'biaya_pengiriman', 'pph_persen', 'submission_id', 'approved_at',
+        'harga_satuan', 'biaya_pengiriman', 'transport_partner', 'submission_id', 'approved_at',
     ];
 
     protected function casts(): array
@@ -19,7 +19,6 @@ class KecamatanProductPrice extends Model
         return [
             'harga_satuan'     => 'decimal:2',
             'biaya_pengiriman' => 'decimal:2',
-            'pph_persen'       => 'decimal:2',
             'approved_at'      => 'datetime',
         ];
     }

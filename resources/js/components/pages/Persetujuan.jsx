@@ -281,7 +281,6 @@ function TabAlokasibiaya() {
 
     const columns = [
         { key: 'region',       label: 'Region' },
-        { key: 'pph_persen',   label: 'PPh %', render: r => <span className="font-mono text-white">{r.pph_persen}%</span> },
         { key: 'items_count',  label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
         { key: 'submitted_by', label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
         { key: 'status',       label: 'Status', render: r => <StatusChip value={r.status} /> },
@@ -304,7 +303,7 @@ function TabAlokasibiaya() {
         lines: p.rates.map(r => ({
             id:     r.id,
             label:  r.kecamatan,
-            detail: `${formatRupiah(r.harga_satuan)}/kg · ongkir ${formatRupiah(r.biaya_pengiriman)}/kg`,
+            detail: `${formatRupiah(r.harga_satuan)}/kg · ongkir via ${r.transport_partner || '—'}: ${formatRupiah(r.biaya_pengiriman)}/kg`,
         })),
     })) : [];
 
@@ -383,20 +382,13 @@ function TabQuota() {
         return v == null ? '—' : `${Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
     }
 
-    const MONTHS_ID = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-    ];
-
     function formatPeriod(period) {
-        if (!period) return '—';
-        const [y, m] = period.split('-');
-        return `${MONTHS_ID[parseInt(m, 10) - 1] ?? m} ${y}`;
+        return period || '—';
     }
 
     const columns = [
         { key: 'region',         label: 'Region' },
-        { key: 'period',         label: 'Periode', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
+        { key: 'period',         label: 'Tahun', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
         { key: 'products_count', label: 'Produk', render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
         { key: 'status',         label: 'Status', render: r => <StatusChip value={r.status} /> },
