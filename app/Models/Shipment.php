@@ -61,7 +61,7 @@ class Shipment extends Model
 
     public function warehouse()
     {
-        return $this->belongsTo(Warehouse::class, 'WarehouseId');
+        return $this->belongsTo(GudangSubmission::class, 'WarehouseId');
     }
 
     public function routeChecks()

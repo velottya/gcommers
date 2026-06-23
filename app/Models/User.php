@@ -85,6 +85,13 @@ class User extends Authenticatable
         'LicenseImageName',
         'PasswordHash',
         'PasswordSalt',
+        'ProvinsiId',
+        'KabupatenId',
+        'KecamatanId',
+        'Kelurahan',
+        'KodePos',
+        'Latitude',
+        'Longitude',
     ];
 
     /**
@@ -115,7 +122,24 @@ class User extends Authenticatable
             'LastFailedLoginAt' => 'datetime',
             'LockoutUntil' => 'datetime',
             'FailedLoginCount' => 'integer',
+            'Latitude' => 'decimal:6',
+            'Longitude' => 'decimal:6',
         ];
+    }
+
+    public function propinsi()
+    {
+        return $this->belongsTo(Propinsi::class, 'ProvinsiId');
+    }
+
+    public function kabupaten()
+    {
+        return $this->belongsTo(Kabupaten::class, 'KabupatenId');
+    }
+
+    public function kecamatan()
+    {
+        return $this->belongsTo(Kecamatan::class, 'KecamatanId');
     }
 
     public function getAuthIdentifierName(): string

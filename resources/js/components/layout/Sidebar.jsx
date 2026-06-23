@@ -37,11 +37,12 @@ const MENUS = {
     ],
     AdminRegion: [
         { icon: LayoutDashboard, label: 'Beranda',             path: '/dashboard' },
-        { icon: ShoppingCart,    label: 'Rekap Pesanan Kiosk', path: '/orders' },
+        { icon: ShoppingCart,    label: 'Daftar Pesanan',      path: '/orders' },
         { icon: Package,         label: 'Produk',              path: '/products' },
         { icon: Wallet,          label: 'Alokasi Biaya',       path: '/alokasi-biaya' },
         { icon: Truck,           label: 'Tarif Transportir',   path: '/tarif-transportir' },
         { icon: Coins,           label: 'Quota Subsidi',       path: '/quota-subsidi' },
+        { icon: Warehouse,       label: 'Daftar Gudang',       path: '/gudang' },
         { icon: Users,           label: 'Admin Region',        path: '/admin-region' },
         { icon: Store,           label: 'Daftar Kiosk',        path: '/app-users' },
         { icon: Bell,            label: 'Notifikasi',          path: '/notifications' },

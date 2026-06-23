@@ -2,7 +2,7 @@ import { ArrowLeft, Ban, Download } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import { OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
+import { GudangStatusBadge, OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
 
 function formatRupiah(val) {
     if (val == null) return '—';
@@ -12,6 +12,20 @@ function formatRupiah(val) {
 function formatDate(val) {
     if (!val) return '—';
     return new Date(val).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatDistance(meters) {
+    if (meters == null) return '—';
+    return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
+}
+
+function Section({ title, children }) {
+    return (
+        <div className="p-6">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{title}</h2>
+            {children}
+        </div>
+    );
 }
 
 function InfoRow({ label, value }) {
@@ -77,6 +91,93 @@ function CancelModal({ order, onClose, onCancelled }) {
     );
 }
 
+// Gudang asal pengiriman: AdminRegion memilih dari gudang yang disetujui di region
+// order ini, masing-masing opsi menampilkan jarak ke alamat kios.
+function GudangSection({ order, canManage, onUpdated }) {
+    const [options, setOptions] = useState(null);
+    const [selected, setSelected] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        if (!canManage) return;
+        api.get(`/orders/${order.id}/gudang-options`)
+            .then(opts => {
+                setOptions(opts);
+                setSelected(order.gudang?.id ? String(order.gudang.id) : '');
+            })
+            .catch(e => setError(e.message));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [canManage, order.id]);
+
+    async function handleSave() {
+        if (!selected) return;
+        setSaving(true);
+        setError(null);
+        try {
+            await api.put(`/orders/${order.id}/gudang`, { gudang_submission_id: selected });
+            onUpdated();
+        } catch (err) {
+            setError(err.message || 'Gagal menyimpan gudang.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    const belumDitentukan = !order.gudang && order.paymentStatus === 'paid';
+
+    if (!canManage) {
+        return (
+            <dl className="space-y-3">
+                <InfoRow label="Gudang"        value={belumDitentukan ? <GudangStatusBadge hasGudang={false} paymentStatus="paid" /> : order.gudang?.namaGudang} />
+                <InfoRow label="Alamat Gudang" value={order.gudang?.alamatGudang} />
+                <InfoRow label="Jarak ke Kios" value={formatDistance(order.gudang?.distanceMeters)} />
+            </dl>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            {order.gudang ? (
+                <div className="rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm">
+                    <p className="font-medium text-white">{order.gudang.namaGudang}</p>
+                    <p className="text-xs text-slate-400">{order.gudang.alamatGudang}</p>
+                    <p className="mt-1 text-xs text-teal-300">Jarak ke kios: {formatDistance(order.gudang.distanceMeters)}</p>
+                </div>
+            ) : belumDitentukan && (
+                <GudangStatusBadge hasGudang={false} paymentStatus="paid" />
+            )}
+
+            {error && <p className="text-sm text-red-400">{error}</p>}
+
+            {!options ? (
+                <p className="text-sm text-slate-500">Memuat opsi gudang…</p>
+            ) : options.length === 0 ? (
+                <p className="text-sm italic text-slate-500">Belum ada gudang yang disetujui di region ini.</p>
+            ) : (
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-[220px] flex-1 space-y-1">
+                        <label className="block text-xs font-medium text-slate-400">Pilih Gudang Asal (diurutkan terdekat)</label>
+                        <select value={selected} onChange={e => setSelected(e.target.value)}
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-teal-400/40 transition">
+                            <option value="">-- Pilih gudang --</option>
+                            {options.map(o => (
+                                <option key={o.id} value={o.id}>
+                                    {o.namaGudang} ({formatDistance(o.distanceMeters)})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <button onClick={handleSave} disabled={saving || !selected}
+                        className="rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-400 disabled:opacity-50 transition">
+                        {saving ? 'Menyimpan…' : 'Simpan Gudang'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 const SHIPMENT_STATUS_LABEL = {
     siap_muat:        'Siap Muat (menunggu sopir berangkat)',
     dalam_perjalanan: 'Dalam Perjalanan',
@@ -92,6 +193,7 @@ export default function OrderDetail({ user }) {
     const [cancelOpen, setCancelOpen] = useState(false);
 
     const canDownloadDocs = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
+    const canManageGudang = user?.role === 'AdminRegion';
     const canCancel       = (user?.role === 'SuperAdmin' || user?.role === 'AdminTransport')
         && order?.paymentStatus === 'paid'
         && !['delivered', 'cancelled'].includes(order?.orderStatus);
@@ -125,7 +227,7 @@ export default function OrderDetail({ user }) {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
                 <button
                     onClick={() => navigate(-1)}
                     className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-400 hover:text-white transition"
@@ -138,8 +240,9 @@ export default function OrderDetail({ user }) {
                 </div>
                 <PaymentStatusBadge value={order?.paymentStatus} />
                 <OrderStatusBadge value={order?.orderStatus} />
+                <GudangStatusBadge hasGudang={Boolean(order?.gudang)} paymentStatus={order?.paymentStatus} />
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
                     {canCancel && (
                         <button
                             onClick={() => setCancelOpen(true)}
@@ -180,123 +283,114 @@ export default function OrderDetail({ user }) {
                 </div>
             )}
 
-            {/* Order header */}
-            <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Informasi Order</h2>
-                <dl className="space-y-3">
-                    <InfoRow label="PO Number"      value={order?.poNumber} />
-                    <InfoRow label="Email Pembeli"  value={order?.userEmail} />
-                    <InfoRow label="Vendor"         value={order?.vendor} />
-                    <InfoRow label="Payment"        value={order?.paymentMethod} />
-                    <InfoRow label="Virtual Account" value={order?.virtualAccount} />
-                    <InfoRow label="VA Expired"     value={formatDate(order?.vaExpiredAt)} />
-                </dl>
-            </div>
-
-            {/* Amounts */}
-            <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Rincian Biaya</h2>
-                <dl className="space-y-3">
-                    <InfoRow label="Subtotal"       value={formatRupiah(order?.subTotal)} />
-                    <InfoRow label="Pajak"          value={formatRupiah(order?.taxAmount)} />
-                    <InfoRow label="Ongkir"         value={formatRupiah(order?.shippingAmount)} />
-                    <InfoRow label="Total"          value={<span className="text-base font-semibold text-amber-300">{formatRupiah(order?.totalAmount)}</span>} />
-                </dl>
-            </div>
-
-            {/* Timestamps */}
-            <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Timeline</h2>
-                <dl className="space-y-3">
-                    <InfoRow label="Dibuat"     value={formatDate(order?.createdAt)} />
-                    <InfoRow label="Dibayar"    value={formatDate(order?.paidAt)} />
-                    <InfoRow label="Dikirim"    value={formatDate(order?.deliveredAt)} />
-                    <InfoRow label="Diperbarui" value={formatDate(order?.updatedAt)} />
-                </dl>
-            </div>
-
-            {/* Pengiriman / Shipment */}
-            {order?.shipment && (
-                <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                    <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Pengiriman &mdash; {SHIPMENT_STATUS_LABEL[order.shipment.status] ?? order.shipment.status}
-                    </h2>
+            <div className="divide-y divide-white/8 rounded-2xl border border-white/8 bg-slate-950/55">
+                <Section title="Informasi Order">
                     <dl className="space-y-3">
-                        <InfoRow label="Sopir"        value={order.shipment.driverName} />
-                        <InfoRow label="Transportir"  value={order.shipment.transportirEmail} />
-                        <InfoRow label="Kendaraan"    value={`${order.shipment.truckLabel ?? '—'} ${order.shipment.policeNumber ? `(${order.shipment.policeNumber})` : ''}`} />
-                        <InfoRow label="Gudang Asal"  value={order.shipment.warehouseName} />
-                        <InfoRow label="Tujuan Kios"  value={order.shipment.destinationLabel} />
-                        <InfoRow label="Alamat Tujuan" value={order.shipment.destinationAddress} />
-                        <InfoRow label="Muat Berangkat (Load-In)" value={formatDate(order.shipment.muatInAt)} />
-                        <InfoRow label="Muat Tiba (Load-Out)"     value={formatDate(order.shipment.muatOutAt)} />
-                        <InfoRow label="Catatan"      value={order.shipment.note} />
+                        <InfoRow label="PO Number"      value={order?.poNumber} />
+                        <InfoRow label="Email Pembeli"  value={order?.userEmail} />
+                        <InfoRow label="Vendor"         value={order?.vendor} />
+                        <InfoRow label="Payment"        value={order?.paymentMethod} />
+                        <InfoRow label="Virtual Account" value={order?.virtualAccount} />
+                        <InfoRow label="VA Expired"     value={formatDate(order?.vaExpiredAt)} />
                     </dl>
-                    {(order.shipment.muatInPhotoUrl || order.shipment.muatOutPhotoUrl) && (
-                        <div className="mt-4 grid grid-cols-2 gap-4">
-                            {order.shipment.muatInPhotoUrl && (
-                                <div>
-                                    <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-In</p>
-                                    <img src={order.shipment.muatInPhotoUrl} alt="Foto load-in" className="rounded-xl border border-white/10" />
-                                </div>
-                            )}
-                            {order.shipment.muatOutPhotoUrl && (
-                                <div>
-                                    <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-Out</p>
-                                    <img src={order.shipment.muatOutPhotoUrl} alt="Foto load-out" className="rounded-xl border border-white/10" />
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
+                </Section>
 
-            {/* Order items (if available) */}
-            {order?.items?.length > 0 && (
-                <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                    <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Item Order</h2>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-white/8">
-                                    {['Produk', 'Qty', 'Harga', 'Subtotal'].map(h => (
-                                        <th key={h} className="pb-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 last:pr-0">{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {order.items.map((item, index) => (
-                                    <tr key={item.id ?? `${item.productCode ?? item.productName ?? 'item'}-${index}`}>
-                                        <td className="py-2.5 pr-4 text-slate-200">{item.productName || item.productCode || '—'}</td>
-                                        <td className="py-2.5 pr-4 text-slate-300">{item.quantity}</td>
-                                        <td className="py-2.5 pr-4 text-slate-300">{formatRupiah(item.price)}</td>
-                                        <td className="py-2.5 text-slate-200">{formatRupiah(item.subtotal)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+                <Section title="Rincian Biaya">
+                    <dl className="space-y-3">
+                        <InfoRow label="Subtotal"       value={formatRupiah(order?.subTotal)} />
+                        <InfoRow label="Pajak"          value={formatRupiah(order?.taxAmount)} />
+                        <InfoRow label="Ongkir"         value={formatRupiah(order?.shippingAmount)} />
+                        <InfoRow label="Total"          value={<span className="text-base font-semibold text-amber-300">{formatRupiah(order?.totalAmount)}</span>} />
+                    </dl>
+                </Section>
 
-            {/* Order events (if available) */}
-            {order?.events?.length > 0 && (
-                <div className="rounded-2xl border border-white/8 bg-slate-950/55 p-6">
-                    <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Riwayat Event</h2>
-                    <div className="space-y-3">
-                        {order.events.map((ev, index) => (
-                            <div key={ev.id ?? `${ev.event ?? 'event'}-${index}`} className="flex gap-4">
-                                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
-                                <div>
-                                    <p className="text-sm font-medium text-slate-200">{ev.event}</p>
-                                    {ev.description && <p className="mt-0.5 text-xs text-slate-400">{ev.description}</p>}
-                                    <p className="mt-1 text-xs text-slate-600">{formatDate(ev.createdAt)}</p>
-                                </div>
+                <Section title="Timeline">
+                    <dl className="space-y-3">
+                        <InfoRow label="Dibuat"     value={formatDate(order?.createdAt)} />
+                        <InfoRow label="Dibayar"    value={formatDate(order?.paidAt)} />
+                        <InfoRow label="Dikirim"    value={formatDate(order?.deliveredAt)} />
+                        <InfoRow label="Diperbarui" value={formatDate(order?.updatedAt)} />
+                    </dl>
+                </Section>
+
+                {order?.kiosk && (
+                    <Section title="Alamat Kios">
+                        <dl className="space-y-3">
+                            <InfoRow label="Nama Kios"      value={order.kiosk.kioskName || order.kiosk.displayName} />
+                            <InfoRow label="No. Telepon"    value={order.kiosk.phone} />
+                            <InfoRow label="Propinsi"       value={order.kiosk.propinsi} />
+                            <InfoRow label="Kabupaten/Kota" value={order.kiosk.kabupaten} />
+                            <InfoRow label="Kecamatan"      value={order.kiosk.kecamatan} />
+                            <InfoRow label="Kelurahan"      value={order.kiosk.kelurahan} />
+                            <InfoRow label="Kode Pos"       value={order.kiosk.kodePos} />
+                            <InfoRow label="Alamat Lengkap" value={order.kiosk.alamatLengkap} />
+                            <InfoRow label="Koordinat"      value={(order.kiosk.latitude && order.kiosk.longitude) ? `${order.kiosk.latitude}, ${order.kiosk.longitude}` : '—'} />
+                        </dl>
+                    </Section>
+                )}
+
+                <Section title="Gudang Pengiriman">
+                    <GudangSection order={order} canManage={canManageGudang} onUpdated={reload} />
+                </Section>
+
+                {order?.shipment && (
+                    <Section title={`Pengiriman — ${SHIPMENT_STATUS_LABEL[order.shipment.status] ?? order.shipment.status}`}>
+                        <dl className="space-y-3">
+                            <InfoRow label="Sopir"        value={order.shipment.driverName} />
+                            <InfoRow label="Transportir"  value={order.shipment.transportirEmail} />
+                            <InfoRow label="Kendaraan"    value={`${order.shipment.truckLabel ?? '—'} ${order.shipment.policeNumber ? `(${order.shipment.policeNumber})` : ''}`} />
+                            <InfoRow label="Gudang Asal"  value={order.shipment.warehouseName} />
+                            <InfoRow label="Tujuan Kios"  value={order.shipment.destinationLabel} />
+                            <InfoRow label="Alamat Tujuan" value={order.shipment.destinationAddress} />
+                            <InfoRow label="Muat Berangkat (Load-In)" value={formatDate(order.shipment.muatInAt)} />
+                            <InfoRow label="Muat Tiba (Load-Out)"     value={formatDate(order.shipment.muatOutAt)} />
+                            <InfoRow label="Catatan"      value={order.shipment.note} />
+                        </dl>
+                        {(order.shipment.muatInPhotoUrl || order.shipment.muatOutPhotoUrl) && (
+                            <div className="mt-4 grid grid-cols-2 gap-4">
+                                {order.shipment.muatInPhotoUrl && (
+                                    <div>
+                                        <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-In</p>
+                                        <img src={order.shipment.muatInPhotoUrl} alt="Foto load-in" className="rounded-xl border border-white/10" />
+                                    </div>
+                                )}
+                                {order.shipment.muatOutPhotoUrl && (
+                                    <div>
+                                        <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-Out</p>
+                                        <img src={order.shipment.muatOutPhotoUrl} alt="Foto load-out" className="rounded-xl border border-white/10" />
+                                    </div>
+                                )}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+                        )}
+                    </Section>
+                )}
+
+                {order?.items?.length > 0 && (
+                    <Section title="Item Order">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-white/8">
+                                        {['Produk', 'Qty', 'Harga', 'Subtotal'].map(h => (
+                                            <th key={h} className="pb-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 last:pr-0">{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {order.items.map((item, index) => (
+                                        <tr key={item.id ?? `${item.productCode ?? item.productName ?? 'item'}-${index}`}>
+                                            <td className="py-2.5 pr-4 text-slate-200">{item.productName || item.productCode || '—'}</td>
+                                            <td className="py-2.5 pr-4 text-slate-300">{item.quantity}</td>
+                                            <td className="py-2.5 pr-4 text-slate-300">{formatRupiah(item.price)}</td>
+                                            <td className="py-2.5 text-slate-200">{formatRupiah(item.subtotal)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Section>
+                )}
+            </div>
 
             {cancelOpen && (
                 <CancelModal order={order} onClose={() => setCancelOpen(false)} onCancelled={reload} />

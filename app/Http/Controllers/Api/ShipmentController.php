@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\GudangSubmission;
 use App\Models\Order;
 use App\Models\Shipment;
 use App\Models\User;
-use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -53,7 +53,7 @@ class ShipmentController extends Controller
                 'transportirEmail'=> $shipment?->TransportirEmail,
                 'driverName'      => $shipment?->DriverName,
                 'truckLabel'      => $shipment?->TruckLabel,
-                'warehouseName'   => $shipment?->warehouse?->name,
+                'warehouseName'   => $shipment?->warehouse?->nama_gudang,
                 'note'            => $shipment?->Note,
                 'muatInAt'        => $shipment?->MuatInCompletedAt,
                 'muatOutAt'       => $shipment?->MuatOutCompletedAt,
@@ -94,8 +94,7 @@ class ShipmentController extends Controller
             ->when($company, fn ($q) => $q->where('CompanyName', $company))
             ->firstOrFail();
 
-        $warehouse = Warehouse::when($company, fn ($q) => $q->where('company_name', $company))
-            ->findOrFail($data['warehouse_id']);
+        $warehouse = GudangSubmission::where('status', 'approved')->findOrFail($data['warehouse_id']);
 
         $kiosk = User::where('Email', $order->UserEmail)->where('Role', 'kiosk')->first();
 
@@ -115,8 +114,8 @@ class ShipmentController extends Controller
                 'PoliceNumber'       => $driver->PoliceNumber,
                 'DestinationLabel'   => $kiosk?->KioskName ?: $kiosk?->DisplayName,
                 'DestinationAddress' => trim(collect([$kiosk?->Address, $kiosk?->Kecamatan])->filter()->implode(', ')) ?: null,
-                'OriginLat'          => $warehouse->lat,
-                'OriginLng'          => $warehouse->lng,
+                'OriginLat'          => $warehouse->latitude,
+                'OriginLng'          => $warehouse->longitude,
                 'Note'               => $data['note'] ?? null,
                 'AssignedBy'         => $user->Email,
             ];

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Helpers\FlutterPasswordHasher;
 use App\Http\Controllers\Controller;
+use App\Models\Kecamatan;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,7 +25,7 @@ class AppUserController extends Controller
         $this->ensureCanManageKiosk();
         $authUser = Auth::user();
 
-        $query = User::where('Role', 'kiosk');
+        $query = User::where('Role', 'kiosk')->with(['propinsi', 'kabupaten', 'kecamatan']);
 
         // AdminRegion hanya melihat kiosk di region mereka sendiri
         if ($authUser->Role === 'AdminRegion') {
@@ -95,12 +96,21 @@ class AppUserController extends Controller
             'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
             'Kecamatan'   => 'nullable|string|max:150',
             'PicName'     => 'nullable|string|max:200',
+            'ProvinsiId'  => 'nullable|integer|exists:propinsi,id',
+            'KabupatenId' => 'nullable|integer|exists:kabupaten,id',
+            'KecamatanId' => 'nullable|integer|exists:kecamatan,id',
+            'Kelurahan'   => 'nullable|string|max:150',
+            'KodePos'     => 'nullable|string|max:10',
+            'Latitude'    => 'nullable|numeric|between:-90,90',
+            'Longitude'   => 'nullable|numeric|between:-180,180',
         ]);
 
         // AdminRegion selalu membuat kiosk di region mereka sendiri
         if ($authUser->Role === 'AdminRegion') {
             $data['Region'] = $authUser->Region;
         }
+
+        $this->syncKecamatanText($data);
 
         ['saltLiteral' => $saltLit, 'hashLiteral' => $hashLit] =
             FlutterPasswordHasher::hashToSqlLiterals($data['password']);
@@ -114,6 +124,13 @@ class AppUserController extends Controller
             'Region'       => $data['Region'] ?? null,
             'Kecamatan'    => $data['Kecamatan'] ?? null,
             'PicName'      => $data['PicName'] ?? null,
+            'ProvinsiId'   => $data['ProvinsiId'] ?? null,
+            'KabupatenId'  => $data['KabupatenId'] ?? null,
+            'KecamatanId'  => $data['KecamatanId'] ?? null,
+            'Kelurahan'    => $data['Kelurahan'] ?? null,
+            'KodePos'      => $data['KodePos'] ?? null,
+            'Latitude'     => $data['Latitude'] ?? null,
+            'Longitude'    => $data['Longitude'] ?? null,
             'Role'         => 'kiosk',
             'PasswordHash' => DB::raw($hashLit),
             'PasswordSalt' => DB::raw($saltLit),
@@ -202,12 +219,21 @@ class AppUserController extends Controller
                 'Region'      => ['nullable', Rule::in(array_merge([''], User::VALID_REGIONS))],
                 'Kecamatan'   => 'nullable|string|max:150',
                 'PicName'     => 'nullable|string|max:200',
+                'ProvinsiId'  => 'nullable|integer|exists:propinsi,id',
+                'KabupatenId' => 'nullable|integer|exists:kabupaten,id',
+                'KecamatanId' => 'nullable|integer|exists:kecamatan,id',
+                'Kelurahan'   => 'nullable|string|max:150',
+                'KodePos'     => 'nullable|string|max:10',
+                'Latitude'    => 'nullable|numeric|between:-90,90',
+                'Longitude'   => 'nullable|numeric|between:-180,180',
             ]);
 
             // AdminRegion tidak boleh mengubah region kiosk
             if ($isAdminRegion) {
                 unset($data['Region']);
             }
+
+            $this->syncKecamatanText($data);
         } else {
             $data = $request->validate([
                 'TransportirName' => 'sometimes|string|max:200',
@@ -307,6 +333,21 @@ class AppUserController extends Controller
         );
     }
 
+    // Sinkronkan kolom legacy `Kecamatan` (teks bebas) dengan KecamatanId terpilih,
+    // supaya fitur lain yang masih bergantung padanya (mis. daftar kecamatan quota
+    // subsidi/tarif biaya) tetap konsisten.
+    private function syncKecamatanText(array &$data): void
+    {
+        if (empty($data['KecamatanId'])) {
+            return;
+        }
+
+        $kecamatan = Kecamatan::find($data['KecamatanId']);
+        if ($kecamatan) {
+            $data['Kecamatan'] = $kecamatan->nama_kec;
+        }
+    }
+
     private function formatKiosk(User $u): array
     {
         return [
@@ -319,6 +360,16 @@ class AppUserController extends Controller
             'Region'      => $u->Region ? (string) $u->Region : null,
             'Kecamatan'   => $u->Kecamatan ? (string) $u->Kecamatan : null,
             'PicName'     => $u->PicName ? (string) $u->PicName : null,
+            'ProvinsiId'  => $u->ProvinsiId,
+            'KabupatenId' => $u->KabupatenId,
+            'KecamatanId' => $u->KecamatanId,
+            'Propinsi'    => $u->propinsi?->nama_pro,
+            'Kabupaten'   => $u->kabupaten?->nama_kab,
+            'KecamatanNama' => $u->kecamatan?->nama_kec,
+            'Kelurahan'   => $u->Kelurahan,
+            'KodePos'     => $u->KodePos,
+            'Latitude'    => $u->Latitude,
+            'Longitude'   => $u->Longitude,
             'CreatedAt'   => $u->CreatedAt,
         ];
     }

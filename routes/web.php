@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AppUserController;
 use App\Http\Controllers\Api\CostRateController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\GudangSubmissionController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
@@ -13,7 +14,6 @@ use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
 use App\Http\Controllers\Api\TransportPartnerRateController;
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +32,8 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/orders/{id}/bptp',           [OrderController::class, 'downloadBptp']);
     Route::get('/orders/{id}/surat-jalan',    [OrderController::class, 'downloadSuratJalan']);
     Route::post('/orders/{id}/cancel',        [OrderController::class, 'cancel']);
+    Route::get('/orders/{id}/gudang-options', [OrderController::class, 'gudangOptions']);
+    Route::put('/orders/{id}/gudang',         [OrderController::class, 'assignGudang']);
     Route::get('/orders/{id}',                [OrderController::class, 'show']);
 
     // Literal routes sebelum wildcard {id}
@@ -106,11 +108,14 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/shipments',                 [ShipmentController::class, 'store']);
     Route::delete('/shipments/{orderId}',     [ShipmentController::class, 'destroy']);
 
-    // Daftar Gudang (AdminTransport + SuperAdmin)
-    Route::get('/warehouses',                 [WarehouseController::class, 'index']);
-    Route::post('/warehouses',                [WarehouseController::class, 'store']);
-    Route::put('/warehouses/{id}',            [WarehouseController::class, 'update']);
-    Route::delete('/warehouses/{id}',         [WarehouseController::class, 'destroy']);
+    // Daftar Gudang - Ajuan AdminRegion (perlu approval SuperAdmin)
+    Route::get('/gudang-submissions/wilayah', [GudangSubmissionController::class, 'wilayah']);
+    Route::get('/gudang-submissions',         [GudangSubmissionController::class, 'index']);
+    Route::post('/gudang-submissions',        [GudangSubmissionController::class, 'store']);
+    Route::put('/gudang-submissions/{id}',    [GudangSubmissionController::class, 'update']);
+    Route::delete('/gudang-submissions/{id}', [GudangSubmissionController::class, 'destroy']);
+    Route::post('/gudang-submissions/{id}/approve', [GudangSubmissionController::class, 'approve']);
+    Route::post('/gudang-submissions/{id}/reject',  [GudangSubmissionController::class, 'reject']);
 
     // Rekap & Tagihan Transport (AdminTransport + SuperAdmin)
     Route::get('/transport-billings',                    [TransportBillingController::class, 'index']);

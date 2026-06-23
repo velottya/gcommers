@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\GudangSubmission;
 use App\Models\Order;
+use App\Models\User;
+use App\Support\Geo;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +16,7 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = $this->accessibleOrders($user)->with('shipment.warehouse');
+        $query = $this->accessibleOrders($user)->with(['shipment.warehouse', 'gudangSubmission']);
 
         if ($request->filled('status')) {
             $query->where('Status', $request->status);
@@ -48,13 +51,74 @@ class OrderController extends Controller
     {
         $user  = Auth::user();
 
-        $order = $this->accessibleOrders($user)->with('shipment.warehouse')->where('Id', $id)->firstOrFail();
+        $order = $this->accessibleOrders($user)
+            ->with(['shipment.warehouse', 'gudangSubmission.kabupaten', 'gudangSubmission.kecamatan'])
+            ->where('Id', $id)->firstOrFail();
 
         try {
             $order->load(['items', 'events']);
         } catch (\Throwable) {
             // Abaikan jika relasi belum bisa di-load
         }
+
+        return response()->json($this->format($order, withRelations: true));
+    }
+
+    // ── Pilih gudang asal untuk order (AdminRegion) ──────────────────────────
+
+    public function gudangOptions(string $id)
+    {
+        $user = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403, 'Akses tidak diizinkan.');
+
+        $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+        $kiosk = $this->resolveKiosk($order);
+
+        abort_unless($kiosk && $kiosk->Region === $user->Region, 403, 'Order ini bukan milik region Anda.');
+
+        $gudangs = GudangSubmission::where('status', 'approved')
+            ->whereHas('region', fn ($q) => $q->where('nama_reg', $user->Region))
+            ->with(['kabupaten', 'kecamatan'])
+            ->get()
+            ->map(function (GudangSubmission $g) use ($kiosk) {
+                $distance = $this->distanceToKiosk($g, $kiosk);
+
+                return [
+                    'id'             => $g->id,
+                    'namaGudang'     => $g->nama_gudang,
+                    'alamatGudang'   => $g->alamat_gudang,
+                    'kabupaten'      => $g->kabupaten?->nama_kab,
+                    'kecamatan'      => $g->kecamatan?->nama_kec,
+                    'distanceMeters' => $distance,
+                ];
+            })
+            ->sortBy(fn ($g) => $g['distanceMeters'] ?? PHP_FLOAT_MAX)
+            ->values();
+
+        return response()->json($gudangs);
+    }
+
+    public function assignGudang(Request $request, string $id)
+    {
+        $user = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403, 'Akses tidak diizinkan.');
+
+        $data = $request->validate([
+            'gudang_submission_id' => 'required|integer',
+        ]);
+
+        $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+        $kiosk = $this->resolveKiosk($order);
+
+        abort_unless($kiosk && $kiosk->Region === $user->Region, 403, 'Order ini bukan milik region Anda.');
+
+        $gudang = GudangSubmission::where('status', 'approved')
+            ->whereHas('region', fn ($q) => $q->where('nama_reg', $user->Region))
+            ->findOrFail($data['gudang_submission_id']);
+
+        $order->forceFill(['GudangSubmissionId' => $gudang->id])->save();
+
+        $order->load(['shipment.warehouse', 'gudangSubmission.kabupaten', 'gudangSubmission.kecamatan']);
 
         return response()->json($this->format($order, withRelations: true));
     }
@@ -172,6 +236,8 @@ class OrderController extends Controller
     private function format(Order $o, bool $withRelations = false): array
     {
         $shipment = $o->relationLoaded('shipment') ? $o->shipment : null;
+        $gudang   = $o->relationLoaded('gudangSubmission') ? $o->gudangSubmission : null;
+        $kiosk    = $withRelations ? $this->resolveKiosk($o) : null;
 
         $data = [
             'id'              => $o->Id,
@@ -200,7 +266,7 @@ class OrderController extends Controller
                 'transportirEmail'=> $shipment->TransportirEmail,
                 'truckLabel'      => $shipment->TruckLabel,
                 'policeNumber'    => $shipment->PoliceNumber,
-                'warehouseName'   => $shipment->warehouse?->name,
+                'warehouseName'   => $shipment->warehouse?->nama_gudang,
                 'destinationLabel'=> $shipment->DestinationLabel,
                 'destinationAddress' => $shipment->DestinationAddress,
                 'muatInPhotoUrl'  => $shipment->MuatInPhotoUrl,
@@ -211,26 +277,70 @@ class OrderController extends Controller
                 'totalDistanceMeters' => $shipment->TotalDistanceMeters,
                 'note'            => $shipment->Note,
             ] : null,
+            'gudang' => $gudang ? [
+                'id'             => $gudang->id,
+                'namaGudang'     => $gudang->nama_gudang,
+                'alamatGudang'   => $gudang->alamat_gudang,
+                'kabupaten'      => $gudang->kabupaten?->nama_kab,
+                'kecamatan'      => $gudang->kecamatan?->nama_kec,
+                'distanceMeters' => $this->distanceToKiosk($gudang, $kiosk),
+            ] : null,
         ];
 
         if ($withRelations) {
             $data['items']  = $o->relationLoaded('items')  ? $o->items  : [];
             $data['events'] = $o->relationLoaded('events') ? $o->events : [];
+            $data['kiosk']  = $kiosk ? [
+                'displayName'   => $kiosk->DisplayName,
+                'kioskName'     => $kiosk->KioskName,
+                'phone'         => $kiosk->Phone,
+                'region'        => $kiosk->Region,
+                'propinsi'      => $kiosk->propinsi?->nama_pro,
+                'kabupaten'     => $kiosk->kabupaten?->nama_kab,
+                'kecamatan'     => $kiosk->kecamatan?->nama_kec,
+                'kelurahan'     => $kiosk->Kelurahan,
+                'kodePos'       => $kiosk->KodePos,
+                'alamatLengkap' => $kiosk->Address,
+                'latitude'      => $kiosk->Latitude,
+                'longitude'     => $kiosk->Longitude,
+            ] : null;
         }
 
         return $data;
     }
 
+    private function resolveKiosk(Order $o): ?User
+    {
+        if (! $o->UserEmail) {
+            return null;
+        }
+
+        return User::where('Email', $o->UserEmail)->where('Role', 'kiosk')
+            ->with(['propinsi', 'kabupaten', 'kecamatan'])->first();
+    }
+
+    private function distanceToKiosk(GudangSubmission $gudang, ?User $kiosk): ?float
+    {
+        if (! $kiosk || $gudang->latitude === null || $gudang->longitude === null
+            || $kiosk->Latitude === null || $kiosk->Longitude === null) {
+            return null;
+        }
+
+        return round(Geo::haversineMeters(
+            (float) $gudang->latitude, (float) $gudang->longitude,
+            (float) $kiosk->Latitude, (float) $kiosk->Longitude
+        ), 1);
+    }
+
     private function accessibleOrders(\App\Models\User $user)
     {
+        // AdminRegion hanya boleh melihat order dari kios yang region-nya sama —
+        // "Vendor" pada Order menyimpan nama perusahaan, bukan region, jadi region
+        // ditentukan lewat kios pemesan (UserEmail -> Users.Region).
         if ($user->Role === 'AdminRegion' && $user->Region) {
-            $scopedQuery = Order::where('Vendor', trim($user->Region));
-
-            if ($scopedQuery->exists()) {
-                return $scopedQuery;
-            }
-
-            return Order::query();
+            return Order::whereIn('UserEmail', function ($q) use ($user) {
+                $q->select('Email')->from('Users')->where('Role', 'kiosk')->where('Region', $user->Region);
+            });
         }
 
         if ($user->Role === 'AdminTransport' && $user->CompanyName) {

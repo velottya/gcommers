@@ -8,6 +8,7 @@ import AjuanStok from './pages/AjuanStok';
 import AlokasiSopir from './pages/AlokasiSopir';
 import AppUserList from './pages/AppUserList';
 import Dashboard from './pages/Dashboard';
+import GudangSubmissionList from './pages/GudangSubmissionList';
 import NotificationList from './pages/NotificationList';
 import OrderDetail from './pages/OrderDetail';
 import OrderList from './pages/OrderList';
@@ -79,6 +80,9 @@ export default function App({ user }) {
                     {(role === 'SuperAdmin' || role === 'AdminRegion') && (
                         <Route path="/quota-subsidi"  element={<QuotaSubsidi user={user} />} />
                     )}
+                    {role === 'AdminRegion' && (
+                        <Route path="/gudang"  element={<GudangSubmissionList user={user} />} />
+                    )}
 
                     {/* ─── AdminRegion only ─── */}
                     {role === 'AdminRegion' && (
@@ -100,7 +104,7 @@ export default function App({ user }) {
                         <Route path="/rekap-tagihan"  element={<RekapTagihan user={user} />} />
                     )}
                     {(role === 'SuperAdmin' || role === 'AdminTransport') && (
-                        <Route path="/gudang"  element={<WarehouseList user={user} />} />
+                        <Route path="/gudang"  element={<WarehouseList />} />
                     )}
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />

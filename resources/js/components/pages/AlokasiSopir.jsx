@@ -117,7 +117,7 @@ function AssignModal({ order, drivers, warehouses, onClose, onSaved }) {
                         >
                             <option value="">— Pilih gudang —</option>
                             {warehouses.map(w => (
-                                <option key={w.id} value={w.id}>{w.name} — {w.address}</option>
+                                <option key={w.id} value={w.id}>{w.nama_gudang} — {w.alamat_gudang}</option>
                             ))}
                         </select>
                     </div>
@@ -186,7 +186,7 @@ export default function AlokasiSopir() {
         api.get('/app-users/transportir', { per_page: 200 })
             .then(d => setDrivers(d?.data ?? []))
             .catch(() => {});
-        api.get('/warehouses')
+        api.get('/gudang-submissions', { status: 'approved' })
             .then(setWarehouses)
             .catch(() => {});
     }, []);

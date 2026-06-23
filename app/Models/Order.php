@@ -37,6 +37,11 @@ class Order extends Model
         return $this->hasOne(Shipment::class, 'OrderId', 'Id');
     }
 
+    public function gudangSubmission()
+    {
+        return $this->belongsTo(GudangSubmission::class, 'GudangSubmissionId');
+    }
+
     /**
      * 2 status pembayaran: pending | paid. Diturunkan dari PaidAt, bukan kolom
      * tersendiri, supaya tidak ada dua sumber kebenaran yang bisa tidak sinkron.

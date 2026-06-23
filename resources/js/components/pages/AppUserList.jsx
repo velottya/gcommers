@@ -1,6 +1,7 @@
 import { Pencil, Plus, Search, Store, Trash2, Truck, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
+import AddressMapField from '../ui/AddressMapField';
 import { Pagination, Table } from '../ui/Table';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -32,6 +33,18 @@ function Inp({ error, ...props }) {
     );
 }
 
+function Sel({ error, children, ...props }) {
+    return (
+        <select
+            className={`w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-white outline-none transition disabled:opacity-50
+                ${error ? 'border-red-400/60' : 'border-white/10 focus:border-amber-400/40'}`}
+            {...props}
+        >
+            {children}
+        </select>
+    );
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const VALID_REGIONS = [
@@ -47,9 +60,10 @@ const VALID_REGIONS = [
 
 const KIOSK_EMPTY = {
     Email: '', DisplayName: '', password: '', Phone: '', Address: '', KioskName: '', Region: '', Kecamatan: '', PicName: '',
+    ProvinsiId: '', KabupatenId: '', KecamatanId: '', Kelurahan: '', KodePos: '', Latitude: '', Longitude: '',
 };
 
-function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
+function KioskModal({ open, onClose, onSaved, editUser, lockedRegion, wilayah }) {
     const [form, setForm]     = useState(KIOSK_EMPTY);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState({});
@@ -58,7 +72,12 @@ function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
     useEffect(() => {
         if (!open) return;
         setErrors({});
-        const base = editUser ? { ...KIOSK_EMPTY, ...editUser, Email: editUser.Email } : KIOSK_EMPTY;
+        const base = editUser ? {
+            ...KIOSK_EMPTY, ...editUser, Email: editUser.Email,
+            ProvinsiId:  editUser.ProvinsiId ? String(editUser.ProvinsiId) : '',
+            KabupatenId: editUser.KabupatenId ? String(editUser.KabupatenId) : '',
+            KecamatanId: editUser.KecamatanId ? String(editUser.KecamatanId) : '',
+        } : KIOSK_EMPTY;
         setForm(lockedRegion ? { ...base, Region: lockedRegion } : base);
         setTimeout(() => firstRef.current?.focus(), 50);
     }, [open, editUser, lockedRegion]);
@@ -67,6 +86,22 @@ function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
 
     const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
     const isEdit = Boolean(editUser);
+
+    const propinsiList  = wilayah?.propinsis ?? [];
+    const kabupatenList = propinsiList.find(p => String(p.id) === String(form.ProvinsiId))?.kabupatens ?? [];
+    const kecamatanList = kabupatenList.find(k => String(k.id) === String(form.KabupatenId))?.kecamatans ?? [];
+
+    const propinsiNama  = propinsiList.find(p => String(p.id) === String(form.ProvinsiId))?.nama_pro;
+    const kabupatenNama = kabupatenList.find(k => String(k.id) === String(form.KabupatenId))?.nama_kab;
+    const kecamatanNama = kecamatanList.find(k => String(k.id) === String(form.KecamatanId))?.nama_kec;
+
+    function setProvinsi(e) {
+        setForm(f => ({ ...f, ProvinsiId: e.target.value, KabupatenId: '', KecamatanId: '' }));
+    }
+
+    function setKabupaten(e) {
+        setForm(f => ({ ...f, KabupatenId: e.target.value, KecamatanId: '' }));
+    }
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -140,23 +175,74 @@ function KioskModal({ open, onClose, onSaved, editUser, lockedRegion }) {
                                 )}
                             </Field>
                         </div>
-                        <Field label="Kecamatan" error={errors.Kecamatan?.[0]}>
-                            <Inp type="text" value={form.Kecamatan} onChange={set('Kecamatan')}
-                                placeholder="Nama kecamatan" error={errors.Kecamatan?.[0]} />
-                        </Field>
+                        {!lockedRegion && (
+                            <Field label="Kecamatan" error={errors.Kecamatan?.[0]}>
+                                <Inp type="text" value={form.Kecamatan} onChange={set('Kecamatan')}
+                                    placeholder="Nama kecamatan" error={errors.Kecamatan?.[0]} />
+                            </Field>
+                        )}
                         <Field label="No. Telepon" error={errors.Phone?.[0]}>
                             <Inp type="text" value={form.Phone} onChange={set('Phone')}
                                 placeholder="08xx" error={errors.Phone?.[0]} />
                         </Field>
-                        <Field label="Alamat" error={errors.Address?.[0]}>
-                            <textarea
-                                value={form.Address}
-                                onChange={set('Address')}
-                                placeholder="Jl. Contoh No. 1"
-                                rows={2}
-                                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-amber-400/40 transition"
-                            />
-                        </Field>
+
+                        {lockedRegion ? (
+                            <>
+                                <Field label="Propinsi" error={errors.ProvinsiId?.[0]}>
+                                    <Sel value={form.ProvinsiId} onChange={setProvinsi}>
+                                        <option value="">-- Pilih Propinsi --</option>
+                                        {propinsiList.map(p => <option key={p.id} value={p.id}>{p.nama_pro}</option>)}
+                                    </Sel>
+                                </Field>
+                                <Field label="Kabupaten/Kota" error={errors.KabupatenId?.[0]}>
+                                    <Sel value={form.KabupatenId} onChange={setKabupaten} disabled={!form.ProvinsiId}>
+                                        <option value="">-- Pilih Kabupaten/Kota --</option>
+                                        {kabupatenList.map(k => <option key={k.id} value={k.id}>{k.nama_kab}</option>)}
+                                    </Sel>
+                                </Field>
+                                <Field label="Kecamatan" error={errors.KecamatanId?.[0]}>
+                                    <Sel value={form.KecamatanId} onChange={set('KecamatanId')} disabled={!form.KabupatenId}>
+                                        <option value="">-- Pilih Kecamatan --</option>
+                                        {kecamatanList.map(k => <option key={k.id} value={k.id}>{k.nama_kec}</option>)}
+                                    </Sel>
+                                </Field>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Field label="Kelurahan" error={errors.Kelurahan?.[0]}>
+                                        <Inp type="text" value={form.Kelurahan} onChange={set('Kelurahan')} />
+                                    </Field>
+                                    <Field label="Kode Pos" error={errors.KodePos?.[0]}>
+                                        <Inp type="text" value={form.KodePos} onChange={set('KodePos')} />
+                                    </Field>
+                                </div>
+                                {errors.Address && <p className="text-xs text-red-400">{errors.Address[0]}</p>}
+                                <AddressMapField
+                                    active={open}
+                                    resetSignal={editUser?.Id ?? 'new'}
+                                    alamat={form.Address}
+                                    onAlamatChange={v => setForm(f => ({ ...f, Address: v }))}
+                                    kelurahan={form.Kelurahan}
+                                    kecamatanNama={kecamatanNama}
+                                    kabupatenNama={kabupatenNama}
+                                    propinsiNama={propinsiNama}
+                                    kodePos={form.KodePos}
+                                    latitude={form.Latitude}
+                                    longitude={form.Longitude}
+                                    onLocationChange={(lat, lng) => setForm(f => ({ ...f, Latitude: lat, Longitude: lng }))}
+                                    alamatLabel="Alamat"
+                                />
+                            </>
+                        ) : (
+                            <Field label="Alamat" error={errors.Address?.[0]}>
+                                <textarea
+                                    value={form.Address}
+                                    onChange={set('Address')}
+                                    placeholder="Jl. Contoh No. 1"
+                                    rows={2}
+                                    className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none resize-none focus:border-amber-400/40 transition"
+                                />
+                            </Field>
+                        )}
+
                         <Field
                             label={isEdit ? 'Password Baru (kosongkan jika tidak diubah)' : 'Password'}
                             error={errors.password?.[0]}
@@ -388,6 +474,7 @@ function KioskTab({ lockedRegion }) {
     const [page,    setPage]    = useState(1);
     const [search,  setSearch]  = useState('');
     const [query,   setQuery]   = useState('');
+    const [wilayah, setWilayah] = useState(null);
 
     const [modalOpen,    setModalOpen]    = useState(false);
     const [editTarget,   setEditTarget]   = useState(null);
@@ -402,6 +489,11 @@ function KioskTab({ lockedRegion }) {
     }, [page, query]);
 
     useEffect(() => { fetch(); }, [fetch]);
+
+    useEffect(() => {
+        if (!lockedRegion) return;
+        api.get('/gudang-submissions/wilayah').then(setWilayah).catch(() => {});
+    }, [lockedRegion]);
 
     function handleSearch(e) {
         e.preventDefault();
@@ -451,6 +543,7 @@ function KioskTab({ lockedRegion }) {
                 onSaved={fetch}
                 editUser={editTarget}
                 lockedRegion={lockedRegion}
+                wilayah={wilayah}
             />
             {deleteTarget && (
                 <DeleteConfirm

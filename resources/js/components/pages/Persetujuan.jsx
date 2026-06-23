@@ -1,4 +1,4 @@
-import { CheckCircle, Coins, FileText, Package, Wallet, XCircle } from 'lucide-react';
+import { CheckCircle, Coins, FileText, Package, Wallet, Warehouse, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
@@ -17,6 +17,7 @@ function formatDate(val) {
 
 const STATUS_CFG = {
     submitted:           { label: 'Diajukan',          color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
+    pending:             { label: 'Menunggu Persetujuan', color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
     approved:            { label: 'Disetujui',         color: 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' },
     partially_approved:  { label: 'Sebagian Disetujui', color: 'text-orange-300 bg-orange-400/10 border-orange-400/20' },
     rejected:            { label: 'Ditolak',           color: 'text-red-300 bg-red-400/10 border-red-400/20' },
@@ -249,7 +250,7 @@ function TabAlokasibiaya() {
     const [loading,       setLoading]       = useState(true);
     const [error,         setError]         = useState(null);
     const [page,          setPage]          = useState(1);
-    const [status,        setStatus]        = useState('submitted');
+    const [status,        setStatus]        = useState('');
     const [target,        setTarget]        = useState(null);
     const [targetDetail,  setTargetDetail]  = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -312,10 +313,10 @@ function TabAlokasibiaya() {
             <div className="flex gap-3">
                 <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
                     <option value="submitted">Menunggu Persetujuan</option>
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
-                    <option value="">Semua</option>
                 </select>
             </div>
 
@@ -348,7 +349,7 @@ function TabQuota() {
     const [loading,       setLoading]       = useState(true);
     const [error,         setError]         = useState(null);
     const [page,          setPage]          = useState(1);
-    const [status,        setStatus]        = useState('submitted');
+    const [status,        setStatus]        = useState('');
     const [target,        setTarget]        = useState(null);
     const [targetDetail,  setTargetDetail]  = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -420,10 +421,10 @@ function TabQuota() {
             <div className="flex gap-3">
                 <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
                     <option value="submitted">Menunggu Persetujuan</option>
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
-                    <option value="">Semua</option>
                 </select>
             </div>
 
@@ -456,7 +457,7 @@ function TabTagihan() {
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState(null);
     const [page,    setPage]    = useState(1);
-    const [status,  setStatus]  = useState('submitted');
+    const [status,  setStatus]  = useState('');
     const [target,  setTarget]  = useState(null);
 
     const fetch = useCallback(() => {
@@ -494,10 +495,10 @@ function TabTagihan() {
             <div className="flex gap-3">
                 <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
                     <option value="submitted">Menunggu Persetujuan</option>
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
-                    <option value="">Semua</option>
                 </select>
             </div>
 
@@ -542,7 +543,7 @@ function TabAjuanStok() {
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState(null);
     const [page,    setPage]    = useState(1);
-    const [status,  setStatus]  = useState('submitted');
+    const [status,  setStatus]  = useState('');
     const [target,  setTarget]  = useState(null);
 
     const fetch = useCallback(() => {
@@ -591,10 +592,10 @@ function TabAjuanStok() {
             <div className="flex gap-3">
                 <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
                     className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
                     <option value="submitted">Menunggu Persetujuan</option>
                     <option value="approved">Disetujui</option>
                     <option value="rejected">Ditolak</option>
-                    <option value="">Semua</option>
                 </select>
             </div>
 
@@ -660,6 +661,82 @@ function TabAjuanStok() {
     );
 }
 
+// ─── Tab: Ajuan Gudang ───────────────────────────────────────────────────────
+
+function TabGudang() {
+    const [data,    setData]    = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error,   setError]   = useState(null);
+    const [status,  setStatus]  = useState('');
+    const [target,  setTarget]  = useState(null);
+
+    const fetch = useCallback(() => {
+        setLoading(true);
+        api.get('/gudang-submissions', { ...(status ? { status } : {}) })
+            .then(setData)
+            .catch(e => setError(e.message))
+            .finally(() => setLoading(false));
+    }, [status]);
+
+    useEffect(() => { fetch(); }, [fetch]);
+
+    const columns = [
+        { key: 'nama_gudang', label: 'Nama Gudang' },
+        { key: 'nama_pic',    label: 'PIC', render: r => <span>{r.nama_pic}{r.no_telp ? ` · ${r.no_telp}` : ''}</span> },
+        { key: 'region',      label: 'Region', render: r => r.region?.nama_reg || '—' },
+        { key: 'submitted_by',label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
+        { key: 'lokasi',      label: 'Lokasi', render: r => <span className="text-xs text-slate-400">{[r.kecamatan?.nama_kec, r.kabupaten?.nama_kab].filter(Boolean).join(', ') || '—'}</span> },
+        { key: 'status',      label: 'Status', render: r => <StatusChip value={r.status} /> },
+        { key: 'review_note', label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
+        {
+            key: '_act', label: '',
+            render: r => r.status === 'pending' ? (
+                <button onClick={() => setTarget(r)}
+                    className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20 transition">
+                    Tinjau
+                </button>
+            ) : null,
+        },
+    ];
+
+    return (
+        <div className="space-y-4">
+            <div className="flex gap-3">
+                <select value={status} onChange={e => setStatus(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
+                    <option value="pending">Menunggu Persetujuan</option>
+                    <option value="approved">Disetujui</option>
+                    <option value="rejected">Ditolak</option>
+                </select>
+            </div>
+
+            {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>}
+
+            <Table columns={columns} data={data} loading={loading} emptyMessage="Belum ada ajuan gudang." />
+
+            {target && (
+                <ReviewModal
+                    title="Tinjau Ajuan Gudang"
+                    summary={
+                        <div className="space-y-1 text-xs">
+                            <p><span className="text-slate-500">Nama Gudang:</span> <strong className="text-white">{target.nama_gudang}</strong></p>
+                            <p><span className="text-slate-500">PIC:</span> {target.nama_pic}{target.no_telp ? ` (${target.no_telp})` : ''}</p>
+                            <p><span className="text-slate-500">Region:</span> {target.region?.nama_reg}</p>
+                            <p><span className="text-slate-500">Diajukan oleh:</span> {target.submitted_by}</p>
+                            <p><span className="text-slate-500">Lokasi:</span> {[target.kecamatan?.nama_kec, target.kabupaten?.nama_kab, target.propinsi?.nama_pro].filter(Boolean).join(', ')}</p>
+                            {target.alamat_gudang && <p><span className="text-slate-500">Alamat:</span> {target.alamat_gudang}</p>}
+                        </div>
+                    }
+                    onClose={() => { setTarget(null); fetch(); }}
+                    onApprove={note => api.post(`/gudang-submissions/${target.id}/approve`, { review_note: note })}
+                    onReject={note  => api.post(`/gudang-submissions/${target.id}/reject`,  { review_note: note })}
+                />
+            )}
+        </div>
+    );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -667,6 +744,7 @@ const TABS = [
     { key: 'quota',   label: 'Quota Subsidi',     icon: Coins },
     { key: 'tagihan', label: 'Tagihan Transport', icon: FileText },
     { key: 'stok',    label: 'Ajuan Stok',        icon: Package },
+    { key: 'gudang',  label: 'Ajuan Gudang',      icon: Warehouse },
 ];
 
 export default function Persetujuan() {
@@ -677,7 +755,7 @@ export default function Persetujuan() {
             <div>
                 <h1 className="text-2xl font-semibold text-white">Persetujuan Ajuan</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Tinjau dan setujui ajuan alokasi biaya, quota subsidi, tagihan transportir, dan ajuan stok produk.
+                    Tinjau dan setujui ajuan alokasi biaya, quota subsidi, tagihan transportir, ajuan stok produk, dan ajuan gudang.
                 </p>
             </div>
 
@@ -697,6 +775,7 @@ export default function Persetujuan() {
             {tab === 'quota'   && <TabQuota />}
             {tab === 'tagihan' && <TabTagihan />}
             {tab === 'stok'    && <TabAjuanStok />}
+            {tab === 'gudang'  && <TabGudang />}
         </div>
     );
 }
