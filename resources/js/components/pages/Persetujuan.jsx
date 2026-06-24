@@ -685,7 +685,12 @@ function TabGudang() {
         { key: 'nama_pic',    label: 'PIC', render: r => <span>{r.nama_pic}{r.no_telp ? ` · ${r.no_telp}` : ''}</span> },
         { key: 'region',      label: 'Region', render: r => r.region?.nama_reg || '—' },
         { key: 'submitted_by',label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
-        { key: 'lokasi',      label: 'Lokasi', render: r => <span className="text-xs text-slate-400">{[r.kecamatan?.nama_kec, r.kabupaten?.nama_kab].filter(Boolean).join(', ') || '—'}</span> },
+        { key: 'lokasi',      label: 'Lokasi', render: r => {
+            const list = r.kecamatans ?? [];
+            if (list.length === 0) return <span className="text-xs text-slate-400">—</span>;
+            const text = list.map(k => `${k.nama_kec} (${k.kabupaten?.nama_kab})`).join(', ');
+            return <span className="text-xs text-slate-400" title={text}>{list.length} kecamatan</span>;
+        } },
         { key: 'status',      label: 'Status', render: r => <StatusChip value={r.status} /> },
         { key: 'review_note', label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
         {
@@ -724,7 +729,10 @@ function TabGudang() {
                             <p><span className="text-slate-500">PIC:</span> {target.nama_pic}{target.no_telp ? ` (${target.no_telp})` : ''}</p>
                             <p><span className="text-slate-500">Region:</span> {target.region?.nama_reg}</p>
                             <p><span className="text-slate-500">Diajukan oleh:</span> {target.submitted_by}</p>
-                            <p><span className="text-slate-500">Lokasi:</span> {[target.kecamatan?.nama_kec, target.kabupaten?.nama_kab, target.propinsi?.nama_pro].filter(Boolean).join(', ')}</p>
+                            <p><span className="text-slate-500">Propinsi:</span> {target.propinsi?.nama_pro || '—'}</p>
+                            <p><span className="text-slate-500">Wilayah Cakupan:</span> {(target.kecamatans ?? []).length > 0
+                                ? target.kecamatans.map(k => `${k.nama_kec} (${k.kabupaten?.nama_kab})`).join(', ')
+                                : '—'}</p>
                             {target.alamat_gudang && <p><span className="text-slate-500">Alamat:</span> {target.alamat_gudang}</p>}
                         </div>
                     }

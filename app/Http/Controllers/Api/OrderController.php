@@ -16,7 +16,7 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = $this->accessibleOrders($user)->with(['shipment.warehouse', 'gudangSubmission']);
+        $query = $this->accessibleOrders($user)->with(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
 
         if ($request->filled('status')) {
             $query->where('Status', $request->status);
@@ -52,7 +52,7 @@ class OrderController extends Controller
         $user  = Auth::user();
 
         $order = $this->accessibleOrders($user)
-            ->with(['shipment.warehouse', 'gudangSubmission.kabupaten', 'gudangSubmission.kecamatan'])
+            ->with(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten'])
             ->where('Id', $id)->firstOrFail();
 
         try {
@@ -78,21 +78,32 @@ class OrderController extends Controller
 
         $gudangs = GudangSubmission::where('status', 'approved')
             ->whereHas('region', fn ($q) => $q->where('nama_reg', $user->Region))
-            ->with(['kabupaten', 'kecamatan'])
+            ->with(['kecamatans.kabupaten'])
             ->get()
             ->map(function (GudangSubmission $g) use ($kiosk) {
                 $distance = $this->distanceToKiosk($g, $kiosk);
+                $tercakup = $kiosk?->KecamatanId !== null && $g->kecamatans->contains('id', $kiosk->KecamatanId);
 
                 return [
                     'id'             => $g->id,
                     'namaGudang'     => $g->nama_gudang,
                     'alamatGudang'   => $g->alamat_gudang,
-                    'kabupaten'      => $g->kabupaten?->nama_kab,
-                    'kecamatan'      => $g->kecamatan?->nama_kec,
+                    'wilayahCakupan' => $g->kecamatans->map(fn ($k) => [
+                        'kecamatan' => $k->nama_kec,
+                        'kabupaten' => $k->kabupaten?->nama_kab,
+                    ])->values(),
+                    'tercakup'       => $tercakup,
                     'distanceMeters' => $distance,
                 ];
             })
-            ->sortBy(fn ($g) => $g['distanceMeters'] ?? PHP_FLOAT_MAX)
+            // Gudang yang cakupannya meliputi kecamatan kios diutamakan, baru lalu jarak terdekat.
+            ->sort(function ($a, $b) {
+                if ($a['tercakup'] !== $b['tercakup']) {
+                    return $a['tercakup'] ? -1 : 1;
+                }
+
+                return ($a['distanceMeters'] ?? PHP_FLOAT_MAX) <=> ($b['distanceMeters'] ?? PHP_FLOAT_MAX);
+            })
             ->values();
 
         return response()->json($gudangs);
@@ -118,7 +129,7 @@ class OrderController extends Controller
 
         $order->forceFill(['GudangSubmissionId' => $gudang->id])->save();
 
-        $order->load(['shipment.warehouse', 'gudangSubmission.kabupaten', 'gudangSubmission.kecamatan']);
+        $order->load(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
 
         return response()->json($this->format($order, withRelations: true));
     }
@@ -281,8 +292,7 @@ class OrderController extends Controller
                 'id'             => $gudang->id,
                 'namaGudang'     => $gudang->nama_gudang,
                 'alamatGudang'   => $gudang->alamat_gudang,
-                'kabupaten'      => $gudang->kabupaten?->nama_kab,
-                'kecamatan'      => $gudang->kecamatan?->nama_kec,
+                'wilayahCakupan' => $gudang->kecamatans->map(fn ($k) => $k->nama_kec . ' (' . ($k->kabupaten?->nama_kab ?? '-') . ')')->implode(', '),
                 'distanceMeters' => $this->distanceToKiosk($gudang, $kiosk),
             ] : null,
         ];

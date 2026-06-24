@@ -19,8 +19,6 @@ class GudangSubmission extends Model
         'longitude',
         'region_id',
         'propinsi_id',
-        'kabupaten_id',
-        'kecamatan_id',
         'status',
         'submitted_by',
         'reviewed_by',
@@ -44,14 +42,11 @@ class GudangSubmission extends Model
         return $this->belongsTo(Propinsi::class);
     }
 
-    public function kabupaten()
+    // Wilayah cakupan gudang: banyak kecamatan (lintas kabupaten), bukan 1.
+    public function kecamatans()
     {
-        return $this->belongsTo(Kabupaten::class);
-    }
-
-    public function kecamatan()
-    {
-        return $this->belongsTo(Kecamatan::class);
+        return $this->belongsToMany(Kecamatan::class, 'gudang_submission_kecamatans', 'gudang_submission_id', 'kecamatan_id')
+            ->withTimestamps();
     }
 
     public function shipments()

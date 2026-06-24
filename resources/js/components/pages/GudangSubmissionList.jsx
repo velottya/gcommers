@@ -1,10 +1,11 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Eye, Pencil, Plus, Trash2, X } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { Table } from '../ui/Table';
 import AddressMapField from '../ui/AddressMapField';
+import KecamatanMultiPicker, { buildKecamatanIndex } from '../ui/KecamatanMultiPicker';
 
 const STATUS_CFG = {
     pending:  { label: 'Menunggu Persetujuan', color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
@@ -23,7 +24,7 @@ function StatusChip({ value }) {
 
 const EMPTY_FORM = {
     nama_gudang: '', nama_pic: '', no_telp: '',
-    propinsi_id: '', kabupaten_id: '', kecamatan_id: '',
+    propinsi_id: '', kecamatan_ids: [],
     kelurahan: '', kode_pos: '', alamat_gudang: '',
     latitude: '', longitude: '',
 };
@@ -74,8 +75,7 @@ function GudangModal({ open, onClose, onSaved, editTarget, wilayah }) {
             nama_pic:      editTarget.nama_pic,
             no_telp:       editTarget.no_telp ?? '',
             propinsi_id:   String(editTarget.propinsi?.id ?? ''),
-            kabupaten_id:  String(editTarget.kabupaten?.id ?? ''),
-            kecamatan_id:  String(editTarget.kecamatan?.id ?? ''),
+            kecamatan_ids: (editTarget.kecamatans ?? []).map(k => String(k.id)),
             kelurahan:     editTarget.kelurahan ?? '',
             kode_pos:      editTarget.kode_pos ?? '',
             alamat_gudang: editTarget.alamat_gudang ?? '',
@@ -86,26 +86,16 @@ function GudangModal({ open, onClose, onSaved, editTarget, wilayah }) {
         setTimeout(() => firstRef.current?.focus(), 50);
     }, [open, editTarget]);
 
+    const propinsiList = wilayah?.propinsis ?? [];
+    const propinsiNama = propinsiList.find(p => String(p.id) === String(form.propinsi_id))?.nama_pro;
+
+    const kecamatanIndex = useMemo(() => buildKecamatanIndex(wilayah), [wilayah]);
+    const firstKecamatan = form.kecamatan_ids[0] ? kecamatanIndex.get(form.kecamatan_ids[0]) : null;
+
     if (!open) return null;
 
     const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
     const isEdit = Boolean(editTarget);
-
-    const propinsiList  = wilayah?.propinsis ?? [];
-    const kabupatenList = propinsiList.find(p => String(p.id) === String(form.propinsi_id))?.kabupatens ?? [];
-    const kecamatanList = kabupatenList.find(k => String(k.id) === String(form.kabupaten_id))?.kecamatans ?? [];
-
-    const propinsiNama  = propinsiList.find(p => String(p.id) === String(form.propinsi_id))?.nama_pro;
-    const kabupatenNama = kabupatenList.find(k => String(k.id) === String(form.kabupaten_id))?.nama_kab;
-    const kecamatanNama = kecamatanList.find(k => String(k.id) === String(form.kecamatan_id))?.nama_kec;
-
-    function setPropinsi(e) {
-        setForm(f => ({ ...f, propinsi_id: e.target.value, kabupaten_id: '', kecamatan_id: '' }));
-    }
-
-    function setKabupaten(e) {
-        setForm(f => ({ ...f, kabupaten_id: e.target.value, kecamatan_id: '' }));
-    }
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -157,24 +147,21 @@ function GudangModal({ open, onClose, onSaved, editTarget, wilayah }) {
                         </Field>
 
                         <Field label="Propinsi" error={errors.propinsi_id?.[0]}>
-                            <Select value={form.propinsi_id} onChange={setPropinsi}>
+                            <Select value={form.propinsi_id} onChange={set('propinsi_id')}>
                                 <option value="">-- Pilih Propinsi --</option>
                                 {propinsiList.map(p => <option key={p.id} value={p.id}>{p.nama_pro}</option>)}
                             </Select>
                         </Field>
 
-                        <Field label="Kabupaten/Kota" error={errors.kabupaten_id?.[0]}>
-                            <Select value={form.kabupaten_id} onChange={setKabupaten} disabled={!form.propinsi_id}>
-                                <option value="">-- Pilih Kabupaten/Kota --</option>
-                                {kabupatenList.map(k => <option key={k.id} value={k.id}>{k.nama_kab}</option>)}
-                            </Select>
-                        </Field>
-
-                        <Field label="Kecamatan" error={errors.kecamatan_id?.[0]}>
-                            <Select value={form.kecamatan_id} onChange={set('kecamatan_id')} disabled={!form.kabupaten_id}>
-                                <option value="">-- Pilih Kecamatan --</option>
-                                {kecamatanList.map(k => <option key={k.id} value={k.id}>{k.nama_kec}</option>)}
-                            </Select>
+                        <Field label="Wilayah Cakupan (Kabupaten & Kecamatan)" error={errors.kecamatan_ids?.[0]}>
+                            <KecamatanMultiPicker
+                                wilayah={wilayah}
+                                selectedIds={form.kecamatan_ids}
+                                onChange={ids => setForm(f => ({ ...f, kecamatan_ids: ids }))}
+                            />
+                            <p className="mt-1 text-xs text-slate-600">
+                                Kios di kecamatan yang dipilih akan otomatis tercakup oleh gudang ini.
+                            </p>
                         </Field>
 
                         <Field label="Kelurahan" error={errors.kelurahan?.[0]}>
@@ -194,8 +181,8 @@ function GudangModal({ open, onClose, onSaved, editTarget, wilayah }) {
                             alamat={form.alamat_gudang}
                             onAlamatChange={v => setForm(f => ({ ...f, alamat_gudang: v }))}
                             kelurahan={form.kelurahan}
-                            kecamatanNama={kecamatanNama}
-                            kabupatenNama={kabupatenNama}
+                            kecamatanNama={firstKecamatan?.nama_kec}
+                            kabupatenNama={firstKecamatan?.kabupatenNama}
                             propinsiNama={propinsiNama}
                             kodePos={form.kode_pos}
                             latitude={form.latitude}
@@ -274,10 +261,20 @@ function GudangDetailModal({ open, onClose, target }) {
                         <DetailRow label="Nama PIC" value={target.nama_pic} />
                         <DetailRow label="No. Telp" value={target.no_telp} />
                         <DetailRow label="Propinsi" value={target.propinsi?.nama_pro} />
-                        <DetailRow label="Kabupaten/Kota" value={target.kabupaten?.nama_kab} />
-                        <DetailRow label="Kecamatan" value={target.kecamatan?.nama_kec} />
                         <DetailRow label="Kelurahan" value={target.kelurahan} />
                         <DetailRow label="Kode Pos" value={target.kode_pos} />
+                    </div>
+
+                    <div>
+                        <p className="text-xs text-slate-500">Wilayah Cakupan</p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {(target.kecamatans ?? []).length === 0 && <span className="text-sm text-white">—</span>}
+                            {(target.kecamatans ?? []).map(k => (
+                                <span key={k.id} className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300">
+                                    {k.nama_kec} ({k.kabupaten?.nama_kab})
+                                </span>
+                            ))}
+                        </div>
                     </div>
 
                     <DetailRow label="Alamat Lengkap" value={target.alamat_gudang} />
@@ -349,8 +346,11 @@ export default function GudangSubmissionList({ user }) {
         { key: 'nama_gudang',   label: 'Nama Gudang' },
         { key: 'nama_pic',      label: 'PIC' },
         { key: 'no_telp',       label: 'No. Telp', render: r => r.no_telp || '—' },
-        { key: 'kabupaten',     label: 'Kabupaten/Kota', render: r => r.kabupaten?.nama_kab || '—' },
-        { key: 'kecamatan',     label: 'Kecamatan',      render: r => r.kecamatan?.nama_kec || '—' },
+        { key: 'kecamatan',     label: 'Wilayah Cakupan', render: r => {
+            const list = r.kecamatans ?? [];
+            if (list.length === 0) return '—';
+            return <span title={list.map(k => k.nama_kec).join(', ')}>{list.length} kecamatan</span>;
+        } },
         { key: 'kelurahan',     label: 'Kelurahan',      render: r => r.kelurahan || '—' },
         { key: 'alamat_gudang', label: 'Alamat', render: r => r.alamat_gudang || '—' },
         { key: 'status',        label: 'Status', render: r => <StatusChip value={r.status} /> },

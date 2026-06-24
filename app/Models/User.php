@@ -142,6 +142,16 @@ class User extends Authenticatable
         return $this->belongsTo(Kecamatan::class, 'KecamatanId');
     }
 
+    // Wilayah kerja AdminTransport: banyak kecamatan.
+    public function kecamatans()
+    {
+        // withTimestamps() butuh nama kolom eksplisit di sini: User::CREATED_AT/UPDATED_AT
+        // ('CreatedAt'/'UpdatedAt') tidak cocok dengan kolom pivot user_kecamatans yang
+        // dibuat lewat $table->timestamps() biasa (created_at/updated_at).
+        return $this->belongsToMany(Kecamatan::class, 'user_kecamatans', 'user_id', 'kecamatan_id')
+            ->withTimestamps('created_at', 'updated_at');
+    }
+
     public function getAuthIdentifierName(): string
     {
         return 'Id';

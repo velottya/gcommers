@@ -2,6 +2,7 @@ import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
+import KecamatanMultiPicker from '../ui/KecamatanMultiPicker';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ const VALID_REGIONS = [
     'Lampung',
 ];
 
-const EMPTY_FORM = { Email: '', DisplayName: '', Phone: '', CompanyName: '', Region: '', password: '' };
+const EMPTY_FORM = { Email: '', DisplayName: '', Phone: '', CompanyName: '', Region: '', password: '', kecamatan_ids: [] };
 
 // ─── Field helper ────────────────────────────────────────────────────────────
 
@@ -66,18 +67,30 @@ function AdminTransportModal({ open, onClose, onSaved, editUser }) {
     const [form, setForm]     = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState({});
+    const [wilayah, setWilayah] = useState(null);
     const firstRef            = useRef(null);
 
     useEffect(() => {
         if (!open) return;
         setErrors({});
-        setForm(editUser ? { ...EMPTY_FORM, ...editUser, password: '' } : EMPTY_FORM);
+        setForm(editUser ? {
+            ...EMPTY_FORM,
+            ...editUser,
+            password: '',
+            kecamatan_ids: (editUser.Kecamatans ?? []).map(k => String(k.id)),
+        } : EMPTY_FORM);
         setTimeout(() => firstRef.current?.focus(), 50);
     }, [open, editUser]);
+
+    useEffect(() => {
+        if (!open || !form.Region) { setWilayah(null); return; }
+        api.get('/gudang-submissions/wilayah', { region: form.Region }).then(setWilayah).catch(() => setWilayah(null));
+    }, [open, form.Region]);
 
     if (!open) return null;
 
     const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+    const setRegion = (e) => setForm(f => ({ ...f, Region: e.target.value, kecamatan_ids: [] }));
     const isEdit = Boolean(editUser);
 
     async function handleSubmit(e) {
@@ -146,12 +159,21 @@ function AdminTransportModal({ open, onClose, onSaved, editUser }) {
                         </div>
 
                         <Field label="Region" error={errors.Region?.[0]}>
-                            <Select value={form.Region} onChange={set('Region')} error={errors.Region?.[0]}>
+                            <Select value={form.Region} onChange={setRegion} error={errors.Region?.[0]}>
                                 <option value="">-- Pilih Region --</option>
                                 {VALID_REGIONS.map(r => (
                                     <option key={r} value={r}>{r}</option>
                                 ))}
                             </Select>
+                        </Field>
+
+                        <Field label="Wilayah Kerja (Kabupaten & Kecamatan)" error={errors.kecamatan_ids?.[0]}>
+                            <KecamatanMultiPicker
+                                wilayah={wilayah}
+                                selectedIds={form.kecamatan_ids}
+                                onChange={ids => setForm(f => ({ ...f, kecamatan_ids: ids }))}
+                                disabledHint={!form.Region ? 'Pilih Region terlebih dahulu.' : undefined}
+                            />
                         </Field>
 
                         <Field
@@ -270,6 +292,11 @@ export default function AdminTransportList({ user }) {
         { key: 'Email',        label: 'Email' },
         { key: 'CompanyName',  label: 'Perusahaan', render: r => <span className="font-medium text-sky-300">{r.CompanyName || '—'}</span> },
         { key: 'Region',       label: 'Region', render: r => r.Region || '—' },
+        { key: 'Kecamatans',   label: 'Wilayah Kerja', render: r => {
+            const list = r.Kecamatans ?? [];
+            if (list.length === 0) return '—';
+            return <span title={list.map(k => k.namaKec).join(', ')}>{list.length} kecamatan</span>;
+        } },
         { key: 'Phone',        label: 'Telepon', render: r => r.Phone || '—' },
         { key: 'DriverCount',  label: 'Jumlah Sopir', render: r => <span className="font-mono text-white">{r.DriverCount ?? 0}</span> },
         { key: 'LastLoginAt',  label: 'Login Terakhir', render: r => <span className="text-xs text-slate-400">{formatDateTime(r.LastLoginAt)}</span> },

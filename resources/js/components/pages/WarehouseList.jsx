@@ -23,8 +23,11 @@ export default function WarehouseList() {
     const columns = [
         { key: 'nama_gudang', label: 'Nama Gudang' },
         { key: 'region',      label: 'Region', render: r => r.region?.nama_reg || '—' },
-        { key: 'kabupaten',   label: 'Kabupaten/Kota', render: r => r.kabupaten?.nama_kab || '—' },
-        { key: 'kecamatan',   label: 'Kecamatan', render: r => r.kecamatan?.nama_kec || '—' },
+        { key: 'kecamatan',   label: 'Wilayah Cakupan', render: r => {
+            const list = r.kecamatans ?? [];
+            if (list.length === 0) return '—';
+            return <span title={list.map(k => k.nama_kec).join(', ')}>{list.length} kecamatan</span>;
+        } },
         { key: 'alamat_gudang', label: 'Alamat', render: r => r.alamat_gudang || '—' },
         { key: 'no_telp',     label: 'No. Telp', render: r => r.no_telp || '—' },
         {

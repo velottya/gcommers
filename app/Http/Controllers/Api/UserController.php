@@ -62,10 +62,13 @@ class UserController extends Controller
         $this->ensureSuperAdmin();
 
         $data = $this->validatePayload($request, false);
+        $kecamatanIds = $data['kecamatan_ids'] ?? [];
+        unset($data['kecamatan_ids']);
+
         $passwordHash = Hash::make($data['password']);
         $passwordData = $this->buildPasswordColumns($passwordHash, Str::random(32));
 
-        $user = DB::transaction(function () use ($data, $passwordData, $passwordHash) {
+        $user = DB::transaction(function () use ($data, $passwordData, $passwordHash, $kecamatanIds) {
             $user = User::create(collect($data)
                 ->except(['password'])
                 ->merge($passwordData)
@@ -75,6 +78,10 @@ class UserController extends Controller
                 ['user_id' => (string) $user->Id],
                 ['password' => $passwordHash]
             );
+
+            if ($user->Role === 'AdminTransport') {
+                $user->kecamatans()->sync($kecamatanIds);
+            }
 
             return $user;
         });
@@ -88,9 +95,15 @@ class UserController extends Controller
 
         $user = $this->findAccessibleUser($id);
         $data = $this->validatePayload($request, true, $user);
+        $kecamatanIds = $data['kecamatan_ids'] ?? null;
+        unset($data['kecamatan_ids']);
 
-        DB::transaction(function () use ($user, $data) {
+        DB::transaction(function () use ($user, $data, $kecamatanIds) {
             $user->update(collect($data)->except(['password'])->all());
+
+            if ($user->Role === 'AdminTransport' && $kecamatanIds !== null) {
+                $user->kecamatans()->sync($kecamatanIds);
+            }
 
             if (filled($data['password'] ?? null)) {
                 $passwordHash = Hash::make($data['password']);
@@ -142,6 +155,8 @@ class UserController extends Controller
             'PoliceNumber' => ['nullable', 'string', 'max:100'],
             'PicName' => ['nullable', 'string', 'max:255'],
             'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'min:8'],
+            'kecamatan_ids' => ['sometimes', 'array'],
+            'kecamatan_ids.*' => ['integer', 'distinct', 'exists:kecamatan,id'],
         ]);
 
         if ($validated['Role'] === 'AdminRegion') {
@@ -232,6 +247,15 @@ class UserController extends Controller
                 ->whereNotNull('Type')
                 ->where('CompanyName', $user->CompanyName)
                 ->count();
+        }
+
+        if ($user->Role === 'AdminTransport') {
+            $payload['Kecamatans'] = $user->kecamatans()->with('kabupaten')->get()->map(fn ($k) => [
+                'id' => $k->id,
+                'namaKec' => $k->nama_kec,
+                'kabupatenId' => $k->kabupaten?->id,
+                'namaKab' => $k->kabupaten?->nama_kab,
+            ])->values();
         }
 
         return $payload;
