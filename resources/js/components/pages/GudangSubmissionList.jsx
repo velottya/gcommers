@@ -346,22 +346,23 @@ export default function GudangSubmissionList({ user }) {
         { key: 'nama_gudang',   label: 'Nama Gudang' },
         { key: 'nama_pic',      label: 'PIC' },
         { key: 'no_telp',       label: 'No. Telp', render: r => r.no_telp || '—' },
-        { key: 'kecamatan',     label: 'Wilayah Cakupan', render: r => {
+        { key: 'kabupaten',     label: 'Kabupaten/Kota', render: r => {
+            const names = [...new Set((r.kecamatans ?? []).map(k => k.kabupaten?.nama_kab).filter(Boolean))];
+            if (names.length === 0) return '—';
+            return <span title={names.join(', ')}>{names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]}</span>;
+        } },
+        { key: 'kecamatan',     label: 'Kecamatan', render: r => {
             const list = r.kecamatans ?? [];
             if (list.length === 0) return '—';
-            return <span title={list.map(k => k.nama_kec).join(', ')}>{list.length} kecamatan</span>;
+            const names = list.map(k => k.nama_kec);
+            return <span title={names.join(', ')}>{list.length > 1 ? `${names[0]} +${list.length - 1}` : names[0]}</span>;
         } },
-        { key: 'kelurahan',     label: 'Kelurahan',      render: r => r.kelurahan || '—' },
         { key: 'alamat_gudang', label: 'Alamat', render: r => r.alamat_gudang || '—' },
         { key: 'status',        label: 'Status', render: r => <StatusChip value={r.status} /> },
         {
             key: '_actions', label: '',
             render: (r) => (
                 <div className="flex items-center gap-2 justify-end">
-                    <button onClick={() => setDetailTarget(r)}
-                        className="rounded-lg p-1.5 text-slate-500 hover:text-teal-400 hover:bg-teal-400/10 transition" title="Detail">
-                        <Eye size={15} />
-                    </button>
                     {['pending', 'rejected'].includes(r.status) && (
                         <>
                             <button onClick={() => { setEditTarget(r); setModalOpen(true); }}
@@ -374,6 +375,10 @@ export default function GudangSubmissionList({ user }) {
                             </button>
                         </>
                     )}
+                    <button onClick={() => setDetailTarget(r)}
+                        className="rounded-lg p-1.5 text-slate-500 hover:text-teal-400 hover:bg-teal-400/10 transition" title="Detail">
+                        <Eye size={15} />
+                    </button>
                 </div>
             ),
         },

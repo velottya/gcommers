@@ -1,4 +1,4 @@
-import { CheckCircle2, MinusCircle, Search } from 'lucide-react';
+import { CheckCircle2, Download, Minus, MinusCircle, Search, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
@@ -27,21 +27,93 @@ const ORDER_STATUS_OPTIONS = [
     { value: 'cancelled', label: 'Dibatalkan' },
 ];
 
-const COLUMNS = [
-    { key: 'poNumber',    label: 'PO Number',  render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
-    { key: 'userEmail',   label: 'Email',      render: r => orderField(r, 'userEmail', 'UserEmail') },
-    { key: 'vendor',      label: 'Vendor',     render: r => orderField(r, 'vendor', 'Vendor') },
-    { key: 'totalAmount', label: 'Total',      render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
-    { key: 'paymentStatus', label: 'Pembayaran', render: r => <PaymentStatusBadge value={orderField(r, 'paymentStatus', 'PaymentStatus')} /> },
-    { key: 'orderStatus', label: 'Status Pemesanan', render: r => <OrderStatusBadge value={orderField(r, 'orderStatus', 'OrderStatus')} /> },
-    {
-        key: 'gudang', label: 'Gudang',
-        render: r => r.gudang
-            ? <CheckCircle2 size={17} className="text-emerald-400" title={r.gudang.namaGudang} />
-            : <MinusCircle size={17} className="text-amber-400" title="Gudang belum ditentukan" />,
-    },
-    { key: 'createdAt',   label: 'Tanggal',    render: r => formatDate(orderField(r, 'createdAt', 'CreatedAt')) },
-];
+function assignedShipments(row) {
+    return (row.shipments ?? []).filter(s => s.status !== 'belum_ditugaskan');
+}
+
+function buildColumns(role, onDownloadSuratJalan) {
+    const isAdminTransport = role === 'AdminTransport';
+
+    return [
+        { key: 'poNumber',  label: 'PO Number', render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
+        { key: 'userEmail', label: 'Email',     render: r => orderField(r, 'userEmail', 'UserEmail') },
+        { key: 'vendor',    label: 'Vendor',    render: r => orderField(r, 'vendor', 'Vendor') },
+        ...(!isAdminTransport ? [
+            { key: 'totalAmount',   label: 'Total',      render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
+            { key: 'paymentStatus', label: 'Pembayaran', render: r => <PaymentStatusBadge value={orderField(r, 'paymentStatus', 'PaymentStatus')} /> },
+        ] : []),
+        { key: 'orderStatus', label: 'Status Pemesanan', render: r => <OrderStatusBadge value={orderField(r, 'orderStatus', 'OrderStatus')} /> },
+        {
+            key: 'gudang', label: 'Gudang',
+            render: r => r.gudang
+                ? <CheckCircle2 size={17} className="text-emerald-400" title={r.gudang.namaGudang} />
+                : <MinusCircle size={17} className="text-amber-400" title="Gudang belum ditentukan" />,
+        },
+        {
+            key: 'pengiriman', label: 'Pengiriman',
+            render: r => r.shippingType
+                ? <CheckCircle2 size={17} className="text-emerald-400" title={`Pengiriman ${r.shippingType} sudah diatur`} />
+                : <MinusCircle size={17} className="text-amber-400" title="Pengiriman belum diatur" />,
+        },
+        ...(isAdminTransport ? [{
+            key: 'suratJalan', label: 'Surat Jalan',
+            render: r => {
+                const assigned = assignedShipments(r);
+                if (assigned.length === 0) {
+                    return <Minus size={17} className="text-slate-500" title="Belum ada surat jalan" />;
+                }
+                return (
+                    <button
+                        onClick={e => { e.stopPropagation(); onDownloadSuratJalan(assigned); }}
+                        className="rounded-lg p-1.5 text-slate-500 hover:text-sky-400 hover:bg-sky-400/10 transition"
+                        title={assigned.length > 1 ? `${assigned.length} surat jalan tersedia` : 'Unduh Surat Jalan'}
+                    >
+                        <Download size={17} />
+                    </button>
+                );
+            },
+        }] : []),
+        { key: 'createdAt', label: 'Tanggal', render: r => formatDate(orderField(r, 'createdAt', 'CreatedAt')) },
+    ];
+}
+
+// Pengiriman Parsial bisa punya beberapa truk yang masing-masing surat jalannya
+// terpisah — kalau lebih dari satu, tampilkan pilihan dulu sebelum unduh.
+function SuratJalanPreviewModal({ shipments, onClose }) {
+    if (!shipments) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
+                    <h2 className="text-base font-semibold text-white">Pilih Surat Jalan</h2>
+                    <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:text-white transition"><X size={18} /></button>
+                </div>
+                <div className="space-y-2 px-6 py-5">
+                    <p className="mb-2 text-xs text-slate-500">
+                        Pengiriman parsial — {shipments.length} truk. Pilih surat jalan yang ingin diunduh:
+                    </p>
+                    {shipments.map((s, i) => (
+                        <a key={s.id}
+                            href={`/api/admin/shipments/${s.id}/surat-jalan-pengantar`}
+                            target="_blank" rel="noreferrer"
+                            className="flex items-center justify-between rounded-xl border border-white/10 bg-white/3 px-4 py-3 text-sm text-slate-200 hover:border-sky-400/30 hover:bg-sky-400/10 transition"
+                        >
+                            <span>Truk {s.slotIndex ?? i + 1} — {s.productName} ({s.quotaTon} Ton)</span>
+                            <Download size={15} className="text-sky-300" />
+                        </a>
+                    ))}
+                </div>
+                <div className="flex justify-end gap-3 border-t border-white/8 px-6 py-4">
+                    <button onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function OrderList({ user }) {
     const navigate                  = useNavigate();
@@ -52,6 +124,7 @@ export default function OrderList({ user }) {
     const [search,  setSearch]      = useState('');
     const [orderStatus, setOrderStatus] = useState('');
     const [query,   setQuery]       = useState({ search: '', orderStatus: '' });
+    const [previewShipments, setPreviewShipments] = useState(null);
 
     const fetchOrders = useCallback(() => {
         setLoading(true);
@@ -70,6 +143,16 @@ export default function OrderList({ user }) {
     }
 
     const pageTitle = user.role === 'AdminTransport' ? 'Assigned Orders' : 'Daftar Order';
+
+    function handleDownloadSuratJalan(assigned) {
+        if (assigned.length === 1) {
+            window.open(`/api/admin/shipments/${assigned[0].id}/surat-jalan-pengantar`, '_blank');
+        } else {
+            setPreviewShipments(assigned);
+        }
+    }
+
+    const columns = buildColumns(user.role, handleDownloadSuratJalan);
 
     function openDetail(orderId) {
         navigate(`/orders/${orderId}`);
@@ -116,7 +199,7 @@ export default function OrderList({ user }) {
                 )}
 
                 <Table
-                    columns={COLUMNS}
+                    columns={columns}
                     data={data?.data}
                     loading={loading}
                     emptyMessage="Tidak ada order ditemukan."
@@ -128,6 +211,8 @@ export default function OrderList({ user }) {
 
                 <Pagination meta={data} onPageChange={setPage} />
             </div>
+
+            <SuratJalanPreviewModal shipments={previewShipments} onClose={() => setPreviewShipments(null)} />
         </div>
     );
 }

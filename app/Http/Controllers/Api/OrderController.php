@@ -5,18 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\GudangSubmission;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Shipment;
 use App\Models\User;
 use App\Support\Geo;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = $this->accessibleOrders($user)->with(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
+        $query = $this->accessibleOrders($user)->with(['shipments.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
 
         if ($request->filled('status')) {
             $query->where('Status', $request->status);
@@ -43,7 +46,7 @@ class OrderController extends Controller
         $orders = $query->orderBy('CreatedAt', 'desc')->paginate(20);
 
         return response()->json(
-            $orders->through(fn (Order $o) => $this->format($o))
+            $orders->through(fn (Order $o) => $this->format($o, user: $user))
         );
     }
 
@@ -52,16 +55,114 @@ class OrderController extends Controller
         $user  = Auth::user();
 
         $order = $this->accessibleOrders($user)
-            ->with(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten'])
+            ->with(['shipments.warehouse', 'gudangSubmission.kecamatans.kabupaten'])
             ->where('Id', $id)->firstOrFail();
 
         try {
-            $order->load(['items', 'events']);
+            $order->load(['items.product', 'events']);
         } catch (\Throwable) {
             // Abaikan jika relasi belum bisa di-load
         }
 
-        return response()->json($this->format($order, withRelations: true));
+        return response()->json($this->format($order, withRelations: true, user: $user));
+    }
+
+    // ── Atur Pengiriman: parsial (2-5 truk) atau penuh (1 truk) (AdminRegion) ──
+
+    public function configurePengiriman(Request $request, string $id)
+    {
+        $user = Auth::user();
+        abort_unless($user->Role === 'AdminRegion', 403, 'Akses tidak diizinkan.');
+
+        $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
+
+        $existing = Shipment::where('OrderId', $order->Id)->get();
+        abort_if(
+            $existing->contains(fn (Shipment $s) => $s->Status !== Shipment::STATUS_BELUM_DITUGASKAN),
+            422,
+            'Sudah ada truk yang dialokasikan, tidak bisa diubah lagi.'
+        );
+
+        $shippingType = $request->validate(['shipping_type' => 'required|in:parsial,penuh'])['shipping_type'];
+
+        $order->load('items');
+        $purchasedByCode = $order->items->groupBy('ProductCode')->map(fn ($g) => [
+            'name'     => $g->first()->ProductName,
+            'quantity' => (float) $g->sum('Quantity'),
+        ]);
+        abort_if($purchasedByCode->isEmpty(), 422, 'Order ini tidak memiliki data item produk, Pengiriman belum bisa diatur.');
+
+        if ($shippingType === 'penuh') {
+            // Otomatis: 1 slot per produk yang dibeli, kuota = seluruh kuantitas
+            // pembelian — tanpa input manual, supaya selalu pas dengan barang yang dibeli.
+            $slots = $purchasedByCode->map(fn ($p, $code) => [
+                'product_code' => $code,
+                'product_name' => $p['name'],
+                'quota_ton'    => $p['quantity'],
+            ])->values()->all();
+        } else {
+            $data = $request->validate([
+                'slots'                => 'required|array|min:2|max:5',
+                'slots.*.product_code' => 'required|string|max:50',
+                'slots.*.product_name' => 'required|string|max:200',
+                'slots.*.quota_ton'    => 'required|numeric|min:0.01',
+            ]);
+            $slots = $data['slots'];
+
+            // Total kuota per produk (digabung lintas slot) harus pas sama dengan
+            // jumlah yang dibeli — tidak boleh lebih, tidak boleh kurang.
+            $allocatedByCode = collect($slots)->groupBy('product_code')->map(fn ($g) => (float) $g->sum('quota_ton'));
+
+            foreach ($purchasedByCode as $code => $p) {
+                $allocated = $allocatedByCode->get($code, 0.0);
+                abort_if(
+                    abs($allocated - $p['quantity']) > 0.01,
+                    422,
+                    "Total kuota produk {$code} harus tepat {$p['quantity']} ton (saat ini {$allocated} ton)."
+                );
+            }
+
+            foreach ($allocatedByCode->keys() as $code) {
+                abort_unless($purchasedByCode->has($code), 422, "Produk {$code} bukan bagian dari order ini.");
+            }
+        }
+
+        DB::transaction(function () use ($order, $existing, $shippingType, $slots) {
+            foreach ($existing as $slot) {
+                $slot->delete();
+            }
+
+            foreach (array_values($slots) as $index => $slot) {
+                Shipment::create([
+                    'ShipmentNumber' => $this->nextShipmentNumber(),
+                    'OrderId'        => $order->Id,
+                    'WarehouseId'    => $order->GudangSubmissionId,
+                    'ProductCode'    => $slot['product_code'],
+                    'ProductName'    => $slot['product_name'],
+                    'QuotaTon'       => $slot['quota_ton'],
+                    'SlotIndex'      => $index + 1,
+                    'Status'         => Shipment::STATUS_BELUM_DITUGASKAN,
+                    'CreatedAt'      => now(),
+                ]);
+            }
+
+            $order->forceFill([
+                'ShippingType' => $shippingType,
+                'ResiNomor'    => $order->ResiNomor ?? Order::generateResiNomor(),
+            ])->save();
+        });
+
+        $order->load(['shipments.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
+
+        return response()->json($this->format($order, withRelations: true, user: Auth::user()));
+    }
+
+    private function nextShipmentNumber(): string
+    {
+        $year  = now()->year;
+        $count = Shipment::where('ShipmentNumber', 'like', "SJ-{$year}-%")->lockForUpdate()->count();
+
+        return sprintf('SJ-%d-%03d', $year, $count + 1);
     }
 
     // ── Pilih gudang asal untuk order (AdminRegion) ──────────────────────────
@@ -129,9 +230,9 @@ class OrderController extends Controller
 
         $order->forceFill(['GudangSubmissionId' => $gudang->id])->save();
 
-        $order->load(['shipment.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
+        $order->load(['shipments.warehouse', 'gudangSubmission.kecamatans.kabupaten']);
 
-        return response()->json($this->format($order, withRelations: true));
+        return response()->json($this->format($order, withRelations: true, user: $user));
     }
 
     public function downloadBptp(string $id)
@@ -147,7 +248,7 @@ class OrderController extends Controller
         $order = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
 
         try {
-            $order->load(['items', 'events']);
+            $order->load(['items.product', 'events']);
         } catch (\Throwable) {}
 
         $pdf = Pdf::loadView('bptp', ['order' => $order])
@@ -169,7 +270,7 @@ class OrderController extends Controller
         );
 
         $order    = $this->accessibleOrders($user)->where('Id', $id)->firstOrFail();
-        $shipment = $order->shipment()->with('warehouse')->first();
+        $shipment = $order->shipments()->with('warehouse')->first();
 
         abort_if($shipment === null, 404, 'Belum ada alokasi sopir/pengiriman untuk order ini.');
 
@@ -201,7 +302,7 @@ class OrderController extends Controller
             'OrderStatusNote' => $data['reason'],
         ]);
 
-        return response()->json($this->format($order->fresh()));
+        return response()->json($this->format($order->fresh(), user: $user));
     }
 
     public function recap(Request $request)
@@ -244,50 +345,50 @@ class OrderController extends Controller
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private function format(Order $o, bool $withRelations = false): array
+    private function format(Order $o, bool $withRelations = false, ?User $user = null): array
     {
-        $shipment = $o->relationLoaded('shipment') ? $o->shipment : null;
-        $gudang   = $o->relationLoaded('gudangSubmission') ? $o->gudangSubmission : null;
-        $kiosk    = $withRelations ? $this->resolveKiosk($o) : null;
+        $shipments = $o->relationLoaded('shipments') ? $o->shipments : collect();
+        $gudang    = $o->relationLoaded('gudangSubmission') ? $o->gudangSubmission : null;
+        $kiosk     = $withRelations ? $this->resolveKiosk($o) : null;
+        $hideFinancials = $user?->Role === 'AdminTransport';
 
         $data = [
             'id'              => $o->Id,
             'poNumber'        => $o->PoNumber,
+            'resiNomor'       => $o->ResiNomor,
+            'shippingType'    => $o->ShippingType,
             'userEmail'       => $o->UserEmail,
             'status'          => $o->Status,
-            'paymentStatus'   => $o->PaymentStatus,
             'orderStatus'     => $o->EffectiveOrderStatus,
             'orderStatusNote' => $o->OrderStatusNote,
             'vendor'          => $o->Vendor,
-            'paymentMethod'   => $o->PaymentMethod,
-            'subTotal'        => $o->Subtotal,
-            'taxAmount'       => $o->TaxAmount,
-            'shippingAmount'  => $o->ShippingAmount,
-            'totalAmount'     => $o->TotalAmount,
             'createdAt'       => $o->CreatedAt,
             'updatedAt'       => $o->UpdatedAt,
             'paidAt'          => $o->PaidAt,
             'deliveredAt'     => $o->DeliveredAt,
-            'virtualAccount'  => $o->VirtualAccount,
-            'vaExpiredAt'     => $o->VaExpiredAt,
-            'shipment'        => $shipment ? [
-                'shipmentNumber'  => $shipment->ShipmentNumber,
-                'status'          => $shipment->Status,
-                'driverName'      => $shipment->DriverName,
-                'transportirEmail'=> $shipment->TransportirEmail,
-                'truckLabel'      => $shipment->TruckLabel,
-                'policeNumber'    => $shipment->PoliceNumber,
-                'warehouseName'   => $shipment->warehouse?->nama_gudang,
-                'destinationLabel'=> $shipment->DestinationLabel,
-                'destinationAddress' => $shipment->DestinationAddress,
-                'muatInPhotoUrl'  => $shipment->MuatInPhotoUrl,
-                'muatInAt'        => $shipment->MuatInCompletedAt,
-                'muatOutPhotoUrl' => $shipment->MuatOutPhotoUrl,
-                'muatOutAt'       => $shipment->MuatOutCompletedAt,
-                'completedAt'     => $shipment->CompletedAt,
-                'totalDistanceMeters' => $shipment->TotalDistanceMeters,
-                'note'            => $shipment->Note,
-            ] : null,
+            'shipments'       => $shipments->map(fn (Shipment $s) => [
+                'id'              => $s->Id,
+                'slotIndex'       => $s->SlotIndex,
+                'productCode'     => $s->ProductCode,
+                'productName'     => $s->ProductName,
+                'quotaTon'        => $s->QuotaTon,
+                'shipmentNumber'  => $s->ShipmentNumber,
+                'status'          => $s->Status,
+                'driverName'      => $s->DriverName,
+                'transportirEmail'=> $s->TransportirEmail,
+                'truckLabel'      => $s->TruckLabel,
+                'policeNumber'    => $s->PoliceNumber,
+                'warehouseName'   => $s->warehouse?->nama_gudang,
+                'destinationLabel'=> $s->DestinationLabel,
+                'destinationAddress' => $s->DestinationAddress,
+                'muatInPhotoUrl'  => $s->MuatInPhotoUrl,
+                'muatInAt'        => $s->MuatInCompletedAt,
+                'muatOutPhotoUrl' => $s->MuatOutPhotoUrl,
+                'muatOutAt'       => $s->MuatOutCompletedAt,
+                'completedAt'     => $s->CompletedAt,
+                'totalDistanceMeters' => $s->TotalDistanceMeters,
+                'note'            => $s->Note,
+            ])->values(),
             'gudang' => $gudang ? [
                 'id'             => $gudang->id,
                 'namaGudang'     => $gudang->nama_gudang,
@@ -297,8 +398,27 @@ class OrderController extends Controller
             ] : null,
         ];
 
+        if (! $hideFinancials) {
+            $data['paymentStatus']  = $o->PaymentStatus;
+            $data['paymentMethod']  = $o->PaymentMethod;
+            $data['subTotal']       = $o->Subtotal;
+            $data['taxAmount']      = $o->TaxAmount;
+            $data['shippingAmount'] = $o->ShippingAmount;
+            $data['totalAmount']    = $o->TotalAmount;
+            $data['virtualAccount'] = $o->VirtualAccount;
+            $data['vaExpiredAt']    = $o->VaExpiredAt;
+        }
+
         if ($withRelations) {
-            $data['items']  = $o->relationLoaded('items')  ? $o->items  : [];
+            $data['items']  = $o->relationLoaded('items') ? $o->items->map(fn (OrderItem $item) => [
+                'id'          => $item->Id,
+                'productCode' => $item->ProductCode,
+                'productName' => $item->ProductName,
+                'quantity'    => $item->Quantity,
+                'unit'        => $item->Unit,
+                'unitPrice'   => $item->UnitPrice,
+                'totalPrice'  => $item->TotalPrice,
+            ])->values() : [];
             $data['events'] = $o->relationLoaded('events') ? $o->events : [];
             $data['kiosk']  = $kiosk ? [
                 'displayName'   => $kiosk->DisplayName,
@@ -319,7 +439,7 @@ class OrderController extends Controller
         return $data;
     }
 
-    private function resolveKiosk(Order $o): ?User
+    public static function resolveKiosk(Order $o): ?User
     {
         if (! $o->UserEmail) {
             return null;
@@ -344,17 +464,15 @@ class OrderController extends Controller
 
     private function accessibleOrders(\App\Models\User $user)
     {
-        // AdminRegion hanya boleh melihat order dari kios yang region-nya sama —
-        // "Vendor" pada Order menyimpan nama perusahaan, bukan region, jadi region
-        // ditentukan lewat kios pemesan (UserEmail -> Users.Region).
-        if ($user->Role === 'AdminRegion' && $user->Region) {
+        // AdminRegion & AdminTransport hanya boleh melihat order dari kios yang
+        // region-nya sama dengan region akun mereka — "Vendor" pada Order menyimpan
+        // nama perusahaan, bukan region, jadi region ditentukan lewat kios pemesan
+        // (UserEmail -> Users.Region). (Alokasi Sopir/ShipmentController tetap pakai
+        // filter Vendor==CompanyName sendiri, tidak terpengaruh perubahan ini.)
+        if (in_array($user->Role, ['AdminRegion', 'AdminTransport'], true) && $user->Region) {
             return Order::whereIn('UserEmail', function ($q) use ($user) {
                 $q->select('Email')->from('Users')->where('Role', 'kiosk')->where('Region', $user->Region);
             });
-        }
-
-        if ($user->Role === 'AdminTransport' && $user->CompanyName) {
-            return Order::where('Vendor', trim($user->CompanyName));
         }
 
         return Order::query();

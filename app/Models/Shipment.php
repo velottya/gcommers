@@ -18,6 +18,7 @@ class Shipment extends Model
     protected $primaryKey = 'Id';
     public    $timestamps = false;
 
+    public const STATUS_BELUM_DITUGASKAN = 'belum_ditugaskan';
     public const STATUS_SIAP_MUAT       = 'siap_muat';
     public const STATUS_DALAM_PERJALANAN = 'dalam_perjalanan';
     public const STATUS_SELESAI         = 'selesai';
@@ -39,6 +40,10 @@ class Shipment extends Model
         'Status',
         'Note',
         'AssignedBy',
+        'ProductName',
+        'ProductCode',
+        'QuotaTon',
+        'SlotIndex',
     ];
 
     protected $casts = [
@@ -52,6 +57,7 @@ class Shipment extends Model
         'OriginLng'           => 'decimal:6',
         'DestinationLat'      => 'decimal:6',
         'DestinationLng'      => 'decimal:6',
+        'QuotaTon'            => 'decimal:2',
     ];
 
     public function order()

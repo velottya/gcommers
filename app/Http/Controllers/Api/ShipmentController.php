@@ -7,6 +7,7 @@ use App\Models\GudangSubmission;
 use App\Models\Order;
 use App\Models\Shipment;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -138,6 +139,87 @@ class ShipmentController extends Controller
         });
 
         return response()->json($shipment->load('warehouse'), $isNew ? 201 : 200);
+    }
+
+    // ── Atur truk terdaftar + nama sopir manual untuk satu slot truk ─────────
+    // (Berbeda dari store(): store() mengasumsikan 1 shipment per order yang
+    // dibuat di sini juga; assign() mengisi sebuah slot yang SUDAH dibuat lebih
+    // dulu oleh AdminRegion lewat OrderController::configurePengiriman().)
+
+    public function assign(Request $request, int $shipmentId)
+    {
+        $user = Auth::user();
+        abort_unless(in_array($user->Role, ['AdminTransport', 'SuperAdmin'], true), 403, 'Akses tidak diizinkan.');
+
+        $data = $request->validate([
+            'transportir_email' => 'required|email',
+            'driver_name'       => 'required|string|max:200',
+        ]);
+
+        $shipment = Shipment::findOrFail($shipmentId);
+
+        abort_unless(
+            $shipment->Status === Shipment::STATUS_BELUM_DITUGASKAN,
+            422,
+            'Truk untuk slot ini sudah dialokasikan.'
+        );
+
+        $order = Order::where('Id', $shipment->OrderId)
+            ->when(
+                $user->Role === 'AdminTransport' && $user->Region,
+                fn ($q) => $q->whereIn('UserEmail', function ($q2) use ($user) {
+                    $q2->select('Email')->from('Users')->where('Role', 'kiosk')->where('Region', $user->Region);
+                })
+            )
+            ->firstOrFail();
+
+        $driver = User::where('Email', $data['transportir_email'])
+            ->where('Role', 'transportir')
+            ->whereNotNull('Type')
+            ->firstOrFail();
+
+        $shipment->update([
+            'DriverName'       => $data['driver_name'],
+            'TransportirEmail' => $driver->Email,
+            'TruckLabel'       => trim(($driver->Type ?: '') . ($driver->PoliceNumber ? " (Nopol: {$driver->PoliceNumber})" : '')) ?: null,
+            'PoliceNumber'     => $driver->PoliceNumber,
+            'Status'           => Shipment::STATUS_SIAP_MUAT,
+            'AssignedBy'       => $user->Email,
+            'UpdatedAt'        => now(),
+        ]);
+
+        if (! $order->OrderStatus) {
+            $order->update(['OrderStatus' => 'processing']);
+        }
+
+        return response()->json($shipment->fresh());
+    }
+
+    public function downloadSuratJalanPengantar(int $shipmentId)
+    {
+        $user = Auth::user();
+        abort_unless(in_array($user->Role, ['AdminTransport', 'AdminRegion', 'SuperAdmin'], true), 403, 'Akses tidak diizinkan.');
+
+        $shipment = Shipment::with(['order.gudangSubmission', 'warehouse'])->findOrFail($shipmentId);
+
+        abort_if(
+            $shipment->Status === Shipment::STATUS_BELUM_DITUGASKAN,
+            404,
+            'Slot truk ini belum dialokasikan ke truk/sopir.'
+        );
+
+        $order = $shipment->order;
+        $kiosk = OrderController::resolveKiosk($order);
+
+        $pdf = Pdf::loadView('surat-jalan-pengantar', [
+            'order'    => $order,
+            'shipment' => $shipment,
+            'kiosk'    => $kiosk,
+        ])->setPaper('a4', 'landscape');
+
+        $filename = 'SuratJalan-' . $shipment->ShipmentNumber . '.pdf';
+
+        return $pdf->download($filename);
     }
 
     public function destroy(int $orderId)

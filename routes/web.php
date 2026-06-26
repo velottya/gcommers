@@ -34,6 +34,7 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/orders/{id}/cancel',        [OrderController::class, 'cancel']);
     Route::get('/orders/{id}/gudang-options', [OrderController::class, 'gudangOptions']);
     Route::put('/orders/{id}/gudang',         [OrderController::class, 'assignGudang']);
+    Route::put('/orders/{id}/pengiriman',     [OrderController::class, 'configurePengiriman']);
     Route::get('/orders/{id}',                [OrderController::class, 'show']);
 
     // Literal routes sebelum wildcard {id}
@@ -106,6 +107,8 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     // Alokasi Sopir / Shipment tracking (AdminTransport)
     Route::get('/shipments',                  [ShipmentController::class, 'index']);
     Route::post('/shipments',                 [ShipmentController::class, 'store']);
+    Route::post('/shipments/{id}/assign',     [ShipmentController::class, 'assign']);
+    Route::get('/shipments/{id}/surat-jalan-pengantar', [ShipmentController::class, 'downloadSuratJalanPengantar']);
     Route::delete('/shipments/{orderId}',     [ShipmentController::class, 'destroy']);
 
     // Daftar Gudang - Ajuan AdminRegion (perlu approval SuperAdmin)

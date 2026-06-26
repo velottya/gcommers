@@ -159,8 +159,8 @@
                     <td style="font-family:monospace">{{ $item->productCode ?? $item->ProductCode ?? '—' }}</td>
                     <td class="right">{{ $item->quantity ?? $item->Quantity ?? 0 }}</td>
                     <td>{{ $item->unit ?? $item->Unit ?? '' }}</td>
-                    <td class="right">{{ number_format($item->price ?? $item->Price ?? 0, 0, ',', '.') }}</td>
-                    <td class="right">{{ number_format($item->subtotal ?? $item->Subtotal ?? 0, 0, ',', '.') }}</td>
+                    <td class="right">{{ number_format($item->unitPrice ?? $item->UnitPrice ?? 0, 0, ',', '.') }}</td>
+                    <td class="right">{{ number_format($item->totalPrice ?? $item->TotalPrice ?? 0, 0, ',', '.') }}</td>
                 </tr>
                 @endforeach
             </tbody>

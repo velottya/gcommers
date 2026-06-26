@@ -1,5 +1,5 @@
-import { ArrowLeft, Ban, Download } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Ban, Download, Plus, Truck, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { GudangStatusBadge, OrderStatusBadge, PaymentStatusBadge } from '../ui/StatusBadge';
@@ -179,10 +179,285 @@ function GudangSection({ order, canManage, onUpdated }) {
 }
 
 const SHIPMENT_STATUS_LABEL = {
+    belum_ditugaskan: 'Belum Ditugaskan ke Truk',
     siap_muat:        'Siap Muat (menunggu sopir berangkat)',
     dalam_perjalanan: 'Dalam Perjalanan',
     selesai:          'Selesai',
 };
+
+const EMPTY_SLOT = { product_code: '', product_name: '', quota_ton: '' };
+
+// AdminRegion: tentukan Pengiriman Penuh (otomatis, 1 truk per produk yang
+// dibeli — tanpa input manual, kuota selalu pas dengan ton pembelian) atau
+// Pengiriman Parsial (2-5 truk, manual: pilih produk dari order.items lalu
+// bagi kuotanya sendiri, total per produk tetap wajib pas dengan ton pembelian).
+function PengirimanModal({ order, onClose, onSaved }) {
+    const [shippingType, setShippingType] = useState('penuh');
+    const [slots, setSlots] = useState([{ ...EMPTY_SLOT }, { ...EMPTY_SLOT }]);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+
+    const productOptions = useMemo(() => {
+        const seen = new Map();
+        (order.items ?? []).forEach(item => {
+            if (item.productCode && !seen.has(item.productCode)) {
+                seen.set(item.productCode, { name: item.productName, quantity: Number(item.quantity) || 0 });
+            }
+        });
+        return Array.from(seen, ([code, v]) => ({ code, name: v.name, quantity: v.quantity }));
+    }, [order.items]);
+
+    // Total yang sudah dialokasikan untuk satu kode produk di SELURUH slot
+    // kecuali slot tertentu (dipakai untuk hitung sisa kuota saat memilih produk).
+    function allocatedForCode(code, exceptIndex = -1) {
+        return slots.reduce((sum, s, i) => (i !== exceptIndex && s.product_code === code ? sum + (parseFloat(s.quota_ton) || 0) : sum), 0);
+    }
+
+    // Status alokasi per produk (Parsial saja — Penuh selalu otomatis pas).
+    const allocationStatus = useMemo(() => {
+        return productOptions.map(o => {
+            const allocated = allocatedForCode(o.code);
+            return { ...o, allocated, ok: Math.abs(allocated - o.quantity) < 0.005 };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [productOptions, slots]);
+
+    const allAllocated = allocationStatus.length > 0 && allocationStatus.every(s => s.ok);
+
+    function updateSlot(index, field, value) {
+        setSlots(rows => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    }
+
+    function updateSlotProduct(index, code) {
+        const opt = productOptions.find(o => o.code === code);
+        const defaultQuota = opt ? Math.max(opt.quantity - allocatedForCode(code, index), 0) : '';
+        setSlots(rows => rows.map((row, i) => (i === index
+            ? { ...row, product_code: code, product_name: opt?.name ?? '', quota_ton: defaultQuota === '' ? '' : String(defaultQuota) }
+            : row)));
+    }
+
+    function addSlot() {
+        if (slots.length >= 5) return;
+        setSlots(rows => [...rows, { ...EMPTY_SLOT }]);
+    }
+
+    function removeSlot(index) {
+        if (slots.length <= 2) return;
+        setSlots(rows => rows.filter((_, i) => i !== index));
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        if (shippingType === 'parsial') {
+            if (slots.some(s => !s.product_code)) { setError('Pilih produk untuk setiap truk.'); return; }
+            if (!allAllocated) { setError('Total kuota tiap produk harus pas sama dengan jumlah pembelian — tidak boleh lebih atau kurang.'); return; }
+        }
+        setSaving(true);
+        setError(null);
+        try {
+            await api.put(`/orders/${order.id}/pengiriman`, shippingType === 'penuh'
+                ? { shipping_type: 'penuh' }
+                : { shipping_type: 'parsial', slots: slots.map(s => ({ product_code: s.product_code, product_name: s.product_name, quota_ton: s.quota_ton })) });
+            onSaved();
+            onClose();
+        } catch (err) {
+            setError(err.message || 'Gagal menyimpan pengiriman.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
+                    <h2 className="text-base font-semibold text-white">Atur Pengiriman</h2>
+                    <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:text-white transition"><X size={18} /></button>
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                    <div className="max-h-[70vh] overflow-y-auto px-6 py-5 space-y-4">
+                        {error && (
+                            <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button type="button" onClick={() => setShippingType('penuh')}
+                                className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium transition ${shippingType === 'penuh' ? 'border-amber-400/40 bg-amber-400/10 text-amber-300' : 'border-white/10 text-slate-400 hover:text-white'}`}>
+                                Pengiriman Penuh
+                            </button>
+                            <button type="button" onClick={() => setShippingType('parsial')}
+                                className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium transition ${shippingType === 'parsial' ? 'border-amber-400/40 bg-amber-400/10 text-amber-300' : 'border-white/10 text-slate-400 hover:text-white'}`}>
+                                Pengiriman Parsial
+                            </button>
+                        </div>
+
+                        {productOptions.length === 0 && (
+                            <p className="text-xs text-red-400">Order ini tidak memiliki data item produk, Pengiriman belum bisa diatur.</p>
+                        )}
+
+                        {shippingType === 'penuh' ? (
+                            <div className="space-y-2">
+                                <p className="text-xs text-slate-500">
+                                    Otomatis — 1 truk per produk, kuota mengikuti jumlah pembelian. Tidak perlu input manual.
+                                </p>
+                                {productOptions.map(o => (
+                                    <div key={o.code} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/3 px-3 py-2.5 text-sm">
+                                        <span className="text-slate-300">{o.code} — {o.name}</span>
+                                        <span className="font-medium text-white">{o.quantity.toFixed(2)} Ton</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <>
+                                <p className="text-xs text-slate-500">
+                                    Pesanan dibagi ke beberapa truk (2-5 truk) — pilih produk & bagi kuotanya sendiri per truk.
+                                </p>
+
+                                <div className="space-y-3">
+                                    {slots.map((slot, index) => (
+                                        <div key={index} className="rounded-xl border border-white/8 bg-white/3 p-3">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Truk {index + 1}</p>
+                                                {slots.length > 2 && (
+                                                    <button type="button" onClick={() => removeSlot(index)}
+                                                        className="text-xs text-red-400 hover:text-red-300 transition">Hapus</button>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="block text-xs font-medium text-slate-400">Produk</label>
+                                                    <select value={slot.product_code}
+                                                        onChange={e => updateSlotProduct(index, e.target.value)}
+                                                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400/40 transition">
+                                                        <option value="">-- Pilih produk --</option>
+                                                        {productOptions.map(o => (
+                                                            <option key={o.code} value={o.code}>{o.code} — {o.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="block text-xs font-medium text-slate-400">Kuota (Ton)</label>
+                                                    <input type="number" step="0.01" min="0.01" value={slot.quota_ton}
+                                                        onChange={e => updateSlot(index, 'quota_ton', e.target.value)}
+                                                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400/40 transition" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {slots.length < 5 && (
+                                    <button type="button" onClick={addSlot}
+                                        className="flex items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 transition">
+                                        <Plus size={14} /> Tambah Truk
+                                    </button>
+                                )}
+
+                                {allocationStatus.length > 0 && (
+                                    <div className="space-y-1.5 rounded-xl border border-white/8 bg-white/3 p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Alokasi Kuota</p>
+                                        {allocationStatus.map(s => (
+                                            <div key={s.code} className="flex items-center justify-between text-xs">
+                                                <span className="text-slate-400">{s.code} — {s.name}</span>
+                                                <span className={s.ok ? 'text-emerald-400' : 'text-red-400'}>
+                                                    {s.allocated.toFixed(2)} / {s.quantity.toFixed(2)} Ton
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex justify-end gap-3 border-t border-white/8 px-6 py-4">
+                        <button type="button" onClick={onClose}
+                            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">
+                            Batal
+                        </button>
+                        <button type="submit" disabled={saving || productOptions.length === 0 || (shippingType === 'parsial' && !allAllocated)}
+                            className="rounded-xl bg-amber-400 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 disabled:opacity-50 transition">
+                            {saving ? 'Menyimpan…' : 'Simpan Pengiriman'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// AdminTransport: pilih truk terdaftar (akun transportir) + isi nama sopir manual
+// untuk satu slot truk yang belum ditugaskan.
+function AssignTruckForm({ shipmentId, onAssigned }) {
+    const [drivers, setDrivers] = useState([]);
+    const [transportirEmail, setTransportirEmail] = useState('');
+    const [driverName, setDriverName] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        api.get('/app-users/transportir', { per_page: 200 })
+            .then(d => setDrivers(d?.data ?? []))
+            .catch(() => {});
+    }, []);
+
+    function handleDriverChange(email) {
+        setTransportirEmail(email);
+        const picked = drivers.find(d => d.Email === email);
+        if (picked) setDriverName(picked.TransportirName || picked.DisplayName || '');
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        if (!transportirEmail) { setError('Pilih truk terdaftar terlebih dahulu.'); return; }
+        if (!driverName.trim()) { setError('Nama sopir wajib diisi.'); return; }
+        setSaving(true);
+        setError(null);
+        try {
+            await api.post(`/shipments/${shipmentId}/assign`, {
+                transportir_email: transportirEmail,
+                driver_name: driverName.trim(),
+            });
+            onAssigned();
+        } catch (err) {
+            setError(err.message || 'Gagal mengalokasikan truk.');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="mt-3 space-y-3 rounded-xl border border-sky-400/20 bg-sky-400/5 p-3">
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                    <label className="block text-xs font-medium text-slate-400">Truk Terdaftar</label>
+                    <select value={transportirEmail} onChange={e => handleDriverChange(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/40 transition">
+                        <option value="">— Pilih truk —</option>
+                        {drivers.map(d => (
+                            <option key={d.Email} value={d.Email}>
+                                {d.Type || 'Truk'} {d.PoliceNumber ? `(${d.PoliceNumber})` : ''} — {d.TransportirName || d.DisplayName}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="space-y-1">
+                    <label className="block text-xs font-medium text-slate-400">Nama Sopir</label>
+                    <input type="text" value={driverName} onChange={e => setDriverName(e.target.value)}
+                        placeholder="Nama sopir yang membawa truk"
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400/40 transition" />
+                </div>
+            </div>
+            <button type="submit" disabled={saving}
+                className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-400 disabled:opacity-50 transition">
+                {saving ? 'Menyimpan…' : 'Alokasikan Truk'}
+            </button>
+        </form>
+    );
+}
 
 export default function OrderDetail({ user }) {
     const { id }                    = useParams();
@@ -191,9 +466,16 @@ export default function OrderDetail({ user }) {
     const [loading, setLoading]     = useState(true);
     const [error,   setError]       = useState(null);
     const [cancelOpen, setCancelOpen] = useState(false);
+    const [pengirimanOpen, setPengirimanOpen] = useState(false);
 
-    const canDownloadDocs = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
-    const canManageGudang = user?.role === 'AdminRegion';
+    const canDownloadDocs       = user?.role === 'SuperAdmin' || user?.role === 'AdminRegion';
+    const canManageGudang       = user?.role === 'AdminRegion';
+    const canAssignTruck        = user?.role === 'AdminTransport' || user?.role === 'SuperAdmin';
+    const canDownloadPengantar  = ['SuperAdmin', 'AdminRegion', 'AdminTransport'].includes(user?.role);
+    const hideFinancials        = user?.role === 'AdminTransport';
+    const shipments             = order?.shipments ?? [];
+    const canConfigurePengiriman = user?.role === 'AdminRegion'
+        && shipments.every(s => s.status === 'belum_ditugaskan');
     const canCancel       = (user?.role === 'SuperAdmin' || user?.role === 'AdminTransport')
         && order?.paymentStatus === 'paid'
         && !['delivered', 'cancelled'].includes(order?.orderStatus);
@@ -238,9 +520,9 @@ export default function OrderDetail({ user }) {
                     <h1 className="text-2xl font-semibold text-white">Order Detail</h1>
                     <p className="mt-0.5 font-mono text-sm text-slate-400">{order?.poNumber}</p>
                 </div>
-                <PaymentStatusBadge value={order?.paymentStatus} />
+                {!hideFinancials && <PaymentStatusBadge value={order?.paymentStatus} />}
                 <OrderStatusBadge value={order?.orderStatus} />
-                <GudangStatusBadge hasGudang={Boolean(order?.gudang)} paymentStatus={order?.paymentStatus} />
+                {!hideFinancials && <GudangStatusBadge hasGudang={Boolean(order?.gudang)} paymentStatus={order?.paymentStatus} />}
 
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                     {canCancel && (
@@ -263,7 +545,7 @@ export default function OrderDetail({ user }) {
                             Unduh BPTP
                         </a>
                     )}
-                    {canDownloadDocs && order?.shipment && (
+                    {canDownloadDocs && shipments.length > 0 && (
                         <a
                             href={`/api/admin/orders/${order.id}/surat-jalan`}
                             target="_blank"
@@ -287,22 +569,29 @@ export default function OrderDetail({ user }) {
                 <Section title="Informasi Order">
                     <dl className="space-y-3">
                         <InfoRow label="PO Number"      value={order?.poNumber} />
+                        <InfoRow label="No. Resi"       value={order?.resiNomor} />
                         <InfoRow label="Email Pembeli"  value={order?.userEmail} />
                         <InfoRow label="Vendor"         value={order?.vendor} />
-                        <InfoRow label="Payment"        value={order?.paymentMethod} />
-                        <InfoRow label="Virtual Account" value={order?.virtualAccount} />
-                        <InfoRow label="VA Expired"     value={formatDate(order?.vaExpiredAt)} />
+                        {!hideFinancials && (
+                            <>
+                                <InfoRow label="Payment"        value={order?.paymentMethod} />
+                                <InfoRow label="Virtual Account" value={order?.virtualAccount} />
+                                <InfoRow label="VA Expired"     value={formatDate(order?.vaExpiredAt)} />
+                            </>
+                        )}
                     </dl>
                 </Section>
 
-                <Section title="Rincian Biaya">
-                    <dl className="space-y-3">
-                        <InfoRow label="Subtotal"       value={formatRupiah(order?.subTotal)} />
-                        <InfoRow label="Pajak"          value={formatRupiah(order?.taxAmount)} />
-                        <InfoRow label="Ongkir"         value={formatRupiah(order?.shippingAmount)} />
-                        <InfoRow label="Total"          value={<span className="text-base font-semibold text-amber-300">{formatRupiah(order?.totalAmount)}</span>} />
-                    </dl>
-                </Section>
+                {!hideFinancials && (
+                    <Section title="Rincian Biaya">
+                        <dl className="space-y-3">
+                            <InfoRow label="Subtotal"       value={formatRupiah(order?.subTotal)} />
+                            <InfoRow label="Pajak"          value={formatRupiah(order?.taxAmount)} />
+                            <InfoRow label="Ongkir"         value={formatRupiah(order?.shippingAmount)} />
+                            <InfoRow label="Total"          value={<span className="text-base font-semibold text-amber-300">{formatRupiah(order?.totalAmount)}</span>} />
+                        </dl>
+                    </Section>
+                )}
 
                 <Section title="Timeline">
                     <dl className="space-y-3">
@@ -329,49 +618,13 @@ export default function OrderDetail({ user }) {
                     </Section>
                 )}
 
-                <Section title="Gudang Pengiriman">
-                    <GudangSection order={order} canManage={canManageGudang} onUpdated={reload} />
-                </Section>
-
-                {order?.shipment && (
-                    <Section title={`Pengiriman — ${SHIPMENT_STATUS_LABEL[order.shipment.status] ?? order.shipment.status}`}>
-                        <dl className="space-y-3">
-                            <InfoRow label="Sopir"        value={order.shipment.driverName} />
-                            <InfoRow label="Transportir"  value={order.shipment.transportirEmail} />
-                            <InfoRow label="Kendaraan"    value={`${order.shipment.truckLabel ?? '—'} ${order.shipment.policeNumber ? `(${order.shipment.policeNumber})` : ''}`} />
-                            <InfoRow label="Gudang Asal"  value={order.shipment.warehouseName} />
-                            <InfoRow label="Tujuan Kios"  value={order.shipment.destinationLabel} />
-                            <InfoRow label="Alamat Tujuan" value={order.shipment.destinationAddress} />
-                            <InfoRow label="Muat Berangkat (Load-In)" value={formatDate(order.shipment.muatInAt)} />
-                            <InfoRow label="Muat Tiba (Load-Out)"     value={formatDate(order.shipment.muatOutAt)} />
-                            <InfoRow label="Catatan"      value={order.shipment.note} />
-                        </dl>
-                        {(order.shipment.muatInPhotoUrl || order.shipment.muatOutPhotoUrl) && (
-                            <div className="mt-4 grid grid-cols-2 gap-4">
-                                {order.shipment.muatInPhotoUrl && (
-                                    <div>
-                                        <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-In</p>
-                                        <img src={order.shipment.muatInPhotoUrl} alt="Foto load-in" className="rounded-xl border border-white/10" />
-                                    </div>
-                                )}
-                                {order.shipment.muatOutPhotoUrl && (
-                                    <div>
-                                        <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-Out</p>
-                                        <img src={order.shipment.muatOutPhotoUrl} alt="Foto load-out" className="rounded-xl border border-white/10" />
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </Section>
-                )}
-
                 {order?.items?.length > 0 && (
                     <Section title="Item Order">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-white/8">
-                                        {['Produk', 'Qty', 'Harga', 'Subtotal'].map(h => (
+                                        {(hideFinancials ? ['Kode Produk', 'Produk', 'Qty'] : ['Kode Produk', 'Produk', 'Qty', 'Harga', 'Total']).map(h => (
                                             <th key={h} className="pb-2 pr-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 last:pr-0">{h}</th>
                                         ))}
                                     </tr>
@@ -379,10 +632,15 @@ export default function OrderDetail({ user }) {
                                 <tbody className="divide-y divide-white/5">
                                     {order.items.map((item, index) => (
                                         <tr key={item.id ?? `${item.productCode ?? item.productName ?? 'item'}-${index}`}>
-                                            <td className="py-2.5 pr-4 text-slate-200">{item.productName || item.productCode || '—'}</td>
+                                            <td className="py-2.5 pr-4 font-mono text-xs text-slate-400">{item.productCode || '—'}</td>
+                                            <td className="py-2.5 pr-4 text-slate-200">{item.productName || '—'}</td>
                                             <td className="py-2.5 pr-4 text-slate-300">{item.quantity}</td>
-                                            <td className="py-2.5 pr-4 text-slate-300">{formatRupiah(item.price)}</td>
-                                            <td className="py-2.5 text-slate-200">{formatRupiah(item.subtotal)}</td>
+                                            {!hideFinancials && (
+                                                <>
+                                                    <td className="py-2.5 pr-4 text-slate-300">{formatRupiah(item.unitPrice)}</td>
+                                                    <td className="py-2.5 text-slate-200">{formatRupiah(item.totalPrice)}</td>
+                                                </>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -390,10 +648,91 @@ export default function OrderDetail({ user }) {
                         </div>
                     </Section>
                 )}
+
+                <Section title="Gudang Pengiriman">
+                    <GudangSection order={order} canManage={canManageGudang} onUpdated={reload} />
+                </Section>
+
+                <Section title="Pengiriman">
+                    {canConfigurePengiriman && (
+                        <button onClick={() => setPengirimanOpen(true)}
+                            className="mb-4 flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300 transition">
+                            <Truck size={15} />
+                            {shipments.length > 0 ? 'Ubah Pengiriman' : 'Atur Pengiriman'}
+                        </button>
+                    )}
+
+                    {shipments.length === 0 && !canConfigurePengiriman && (
+                        <p className="text-sm italic text-slate-500">Pengiriman belum diatur oleh Admin Region.</p>
+                    )}
+
+                    <div className="space-y-4">
+                        {shipments.map((s, index) => (
+                            <div key={s.id} className="rounded-xl border border-white/8 bg-white/3 p-4">
+                                <div className="mb-3 flex items-center justify-between">
+                                    <p className="text-sm font-semibold text-white">
+                                        Truk {index + 1} — {s.productCode ? `${s.productCode} — ` : ''}{s.productName} ({s.quotaTon} Ton)
+                                    </p>
+                                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-slate-300">
+                                        {SHIPMENT_STATUS_LABEL[s.status] ?? s.status}
+                                    </span>
+                                </div>
+
+                                {s.status !== 'belum_ditugaskan' && (
+                                    <dl className="space-y-2">
+                                        <InfoRow label="Sopir"        value={s.driverName} />
+                                        <InfoRow label="Transportir"  value={s.transportirEmail} />
+                                        <InfoRow label="Kendaraan"    value={`${s.truckLabel ?? '—'} ${s.policeNumber ? `(${s.policeNumber})` : ''}`} />
+                                        <InfoRow label="Gudang Asal"  value={s.warehouseName} />
+                                        <InfoRow label="Muat Berangkat (Load-In)" value={formatDate(s.muatInAt)} />
+                                        <InfoRow label="Muat Tiba (Load-Out)"     value={formatDate(s.muatOutAt)} />
+                                    </dl>
+                                )}
+
+                                {(s.muatInPhotoUrl || s.muatOutPhotoUrl) && (
+                                    <div className="mt-3 grid grid-cols-2 gap-4">
+                                        {s.muatInPhotoUrl && (
+                                            <div>
+                                                <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-In</p>
+                                                <img src={s.muatInPhotoUrl} alt="Foto load-in" className="rounded-xl border border-white/10" />
+                                            </div>
+                                        )}
+                                        {s.muatOutPhotoUrl && (
+                                            <div>
+                                                <p className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">Foto Load-Out</p>
+                                                <img src={s.muatOutPhotoUrl} alt="Foto load-out" className="rounded-xl border border-white/10" />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {s.status === 'belum_ditugaskan' && canAssignTruck && (
+                                    <AssignTruckForm shipmentId={s.id} onAssigned={reload} />
+                                )}
+
+                                {s.status !== 'belum_ditugaskan' && canDownloadPengantar && (
+                                    <a
+                                        href={`/api/admin/shipments/${s.id}/surat-jalan-pengantar`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-400/10 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-400/20 transition"
+                                    >
+                                        <Download size={13} />
+                                        Unduh Surat Jalan
+                                    </a>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </Section>
             </div>
 
             {cancelOpen && (
                 <CancelModal order={order} onClose={() => setCancelOpen(false)} onCancelled={reload} />
+            )}
+
+            {pengirimanOpen && (
+                <PengirimanModal order={order} onClose={() => setPengirimanOpen(false)} onSaved={reload} />
             )}
         </div>
     );
