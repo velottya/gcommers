@@ -127,11 +127,12 @@ function GudangDetailModal({ open, onClose, target }) {
 // Daftar gudang yang sudah disetujui (lihat fitur "Ajuan Gudang" milik AdminRegion
 // dan tab "Ajuan Gudang" pada Persetujuan SuperAdmin). Halaman ini hanya menampilkan,
 // pengelolaan (tambah/ubah/hapus) dilakukan lewat alur ajuan + persetujuan tersebut.
-export default function WarehouseList() {
+export default function WarehouseList({ user }) {
     const [data,    setData]    = useState([]);
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState(null);
     const [detailTarget, setDetailTarget] = useState(null);
+    const isAdminTransport = user?.role === 'AdminTransport';
 
     const fetchData = useCallback(() => {
         setLoading(true);
@@ -181,7 +182,9 @@ export default function WarehouseList() {
             <div>
                 <h1 className="text-2xl font-semibold text-white">Daftar Gudang</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Gudang yang sudah disetujui, dipilih saat alokasi sopir. Pengajuan gudang baru dilakukan oleh Admin Region.
+                    {isAdminTransport
+                        ? 'Gudang yang sudah disetujui dan wilayah cakupannya beririsan dengan wilayah kerja Anda.'
+                        : 'Gudang yang sudah disetujui, dipilih saat alokasi sopir. Pengajuan gudang baru dilakukan oleh Admin Region.'}
                 </p>
             </div>
 
@@ -189,7 +192,11 @@ export default function WarehouseList() {
                 <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>
             )}
 
-            <Table columns={columns} data={data} loading={loading} emptyMessage="Belum ada gudang yang disetujui." />
+            <Table columns={columns} data={data} loading={loading} emptyMessage={
+                isAdminTransport
+                    ? 'Belum ada gudang yang disetujui di wilayah kerja Anda. Kalau ini tidak sesuai harapan, hubungi SuperAdmin untuk memastikan wilayah kerja (kecamatan) akun Anda sudah diatur di menu Admin Transport.'
+                    : 'Belum ada gudang yang disetujui.'
+            } />
 
             <GudangDetailModal
                 open={Boolean(detailTarget)}

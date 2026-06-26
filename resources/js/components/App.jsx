@@ -3,12 +3,12 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './layout/Layout';
 import AdminRegionList from './pages/AdminRegionList';
 import AdminTransportList from './pages/AdminTransportList';
-import AlokasiBiaya from './pages/AlokasiBiaya';
 import AjuanStok from './pages/AjuanStok';
 import AlokasiSopir from './pages/AlokasiSopir';
 import AppUserList from './pages/AppUserList';
 import Dashboard from './pages/Dashboard';
 import GudangSubmissionList from './pages/GudangSubmissionList';
+import HargaProduk from './pages/HargaProduk';
 import NotificationList from './pages/NotificationList';
 import OrderDetail from './pages/OrderDetail';
 import OrderList from './pages/OrderList';
@@ -86,7 +86,7 @@ export default function App({ user }) {
 
                     {/* ─── AdminRegion only ─── */}
                     {role === 'AdminRegion' && (
-                        <Route path="/alokasi-biaya"  element={<AlokasiBiaya user={user} />} />
+                        <Route path="/harga-produk"  element={<HargaProduk user={user} />} />
                     )}
                     {role === 'AdminRegion' && (
                         <Route path="/tarif-transportir" element={<TarifTransportir user={user} />} />
@@ -104,7 +104,7 @@ export default function App({ user }) {
                         <Route path="/rekap-tagihan"  element={<RekapTagihan user={user} />} />
                     )}
                     {(role === 'SuperAdmin' || role === 'AdminTransport') && (
-                        <Route path="/gudang"  element={<WarehouseList />} />
+                        <Route path="/gudang"  element={<WarehouseList user={user} />} />
                     )}
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />

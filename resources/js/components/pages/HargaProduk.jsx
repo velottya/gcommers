@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, ChevronRight, Plus, Send, Trash2, Wallet } from 'lucide-react';
+import { ArrowLeft, Package, Plus, Send, Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
@@ -29,36 +29,8 @@ function fRupiah(val) {
 let _uid = 0;
 const nextUid = () => ++_uid;
 
-function emptyProduct() {
-    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', rates: [] };
-}
-
 function emptyRate() {
-    return { _uid: nextUid(), kecamatan: '', harga_satuan: '', transport_partner: '' };
-}
-
-function groupItemsByProduct(items) {
-    const map = new Map();
-    for (const it of (items ?? [])) {
-        if (!map.has(it.product_id)) {
-            map.set(it.product_id, {
-                _uid: nextUid(),
-                product_id:   it.product_id,
-                product_code: it.product_code,
-                product_name: it.product_name,
-                rates: [],
-            });
-        }
-        map.get(it.product_id).rates.push({
-            _uid:              nextUid(),
-            kecamatan:         it.kecamatan,
-            harga_satuan:      String(it.harga_satuan),
-            transport_partner: it.transport_partner,
-            biaya_pengiriman:  String(it.biaya_pengiriman),
-            status:            it.status,
-        });
-    }
-    return Array.from(map.values());
+    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', kecamatan: '', harga_satuan: '' };
 }
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
@@ -92,151 +64,82 @@ function ErrBanner({ msg }) {
     );
 }
 
-// ─── ProductRateRow (dalam form edit) ─────────────────────────────────────────
+// ─── RateTable (dalam form edit / detail) ──────────────────────────────────────
 
-function ProductRateRow({ p, kecamatanList, partners, onChange, onRemove, readOnly }) {
-    const [open, setOpen] = useState(true);
-
-    const usedKecamatan = new Set(p.rates.map(r => r.kecamatan));
-    const availKecamatan = kecamatanList.filter(k => !usedKecamatan.has(k));
-
-    function addRate() {
-        if (!availKecamatan.length) return;
-        onChange({ ...p, rates: [...p.rates, { ...emptyRate(), kecamatan: availKecamatan[0] }] });
-    }
-
-    function updateRate(uid, field, value) {
-        onChange({
-            ...p,
-            rates: p.rates.map(r => r._uid === uid ? { ...r, [field]: value } : r),
-        });
-    }
-
-    function removeRate(uid) {
-        onChange({ ...p, rates: p.rates.filter(r => r._uid !== uid) });
-    }
-
-    function partnerRate(companyName) {
-        return partners?.find(pt => pt.company_name === companyName)?.shipping_cost_per_kg ?? null;
+function RateTable({ rates, kecamatanList, products, onUpdate, onRemove, readOnly }) {
+    if (rates.length === 0) {
+        return <p className="text-xs text-slate-600 italic py-2">Belum ada harga.</p>;
     }
 
     return (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3">
-                <button type="button" onClick={() => setOpen(o => !o)}
-                    className="text-slate-400 hover:text-white transition">
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{p.product_name}</p>
-                    <p className="text-xs text-slate-500 font-mono">{p.product_code}</p>
-                </div>
-                {!readOnly && (
-                    <button type="button" onClick={onRemove}
-                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
-                        <Trash2 size={15} />
-                    </button>
-                )}
-            </div>
-
-            {open && (
-                <div className="border-t border-white/8 px-4 pb-4 pt-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-slate-400">Tarif per Kecamatan</p>
-                        {!readOnly && (
-                            <button type="button" onClick={addRate} disabled={!availKecamatan.length}
-                                className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                                <Plus size={11} /> Tambah Kecamatan
-                            </button>
-                        )}
-                    </div>
-
-                    {p.rates.length === 0 ? (
-                        <p className="text-xs text-slate-600 italic py-2">Belum ada tarif kecamatan.</p>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="text-xs text-slate-500 border-b border-white/8">
-                                        <th className="text-left pb-2 font-medium">Kecamatan</th>
-                                        <th className="text-left pb-2 font-medium w-36">Harga Satuan (Rp/kg)</th>
-                                        <th className="text-left pb-2 font-medium w-48">Mitra Transportir</th>
-                                        <th className="text-left pb-2 font-medium w-36">Biaya Kirim (Rp/kg)</th>
-                                        {!readOnly && <th className="w-8" />}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {p.rates.map(r => {
-                                    const shippingRate = readOnly ? r.biaya_pengiriman : partnerRate(r.transport_partner);
-                                    return (
-                                        <tr key={r._uid}>
-                                            <td className="py-2 pr-3">
-                                                {readOnly ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="text-white">{r.kecamatan}</p>
-                                                        {r.status === 'approved' && (
-                                                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">Setuju</span>
-                                                        )}
-                                                        {r.status === 'rejected' && (
-                                                            <span className="rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-300">Ditolak</span>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <Sel value={r.kecamatan}
-                                                        onChange={e => updateRate(r._uid, 'kecamatan', e.target.value)}>
-                                                        {kecamatanList.filter(kk =>
-                                                            kk === r.kecamatan || !usedKecamatan.has(kk)
-                                                        ).map(kk => (
-                                                            <option key={kk} value={kk}>{kk}</option>
-                                                        ))}
-                                                    </Sel>
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-3">
-                                                {readOnly ? (
-                                                    <span className="font-mono text-white">{fRupiah(r.harga_satuan)}</span>
-                                                ) : (
-                                                    <Inp type="number" min="0" step="1" value={r.harga_satuan}
-                                                        onChange={e => updateRate(r._uid, 'harga_satuan', e.target.value)} />
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-3">
-                                                {readOnly ? (
-                                                    <p className="text-white">{r.transport_partner || '—'}</p>
-                                                ) : (
-                                                    <Sel value={r.transport_partner}
-                                                        onChange={e => updateRate(r._uid, 'transport_partner', e.target.value)}>
-                                                        <option value="">-- Pilih Mitra --</option>
-                                                        {(partners ?? []).map(pt => (
-                                                            <option key={pt.company_name} value={pt.company_name}>{pt.company_name}</option>
-                                                        ))}
-                                                    </Sel>
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-3">
-                                                {shippingRate != null ? (
-                                                    <span className="font-mono text-white">{fRupiah(shippingRate)}</span>
-                                                ) : (
-                                                    <span className="text-xs text-amber-400 italic">Belum ada tarif</span>
-                                                )}
-                                            </td>
-                                            {!readOnly && (
-                                                <td className="py-2">
-                                                    <button type="button" onClick={() => removeRate(r._uid)}
-                                                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            )}
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="text-xs text-slate-500 border-b border-white/8">
+                        <th className="text-left pb-2 font-medium">Kecamatan</th>
+                        <th className="text-left pb-2 font-medium w-48">Produk</th>
+                        <th className="text-left pb-2 font-medium w-36">Harga Satuan (Rp/kg)</th>
+                        {!readOnly && <th className="w-8" />}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                    {rates.map(r => (
+                        <tr key={r._uid}>
+                            <td className="py-2 pr-3">
+                                {readOnly ? (
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-white">{r.kecamatan}</p>
+                                        {r.status === 'approved' && (
+                                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">Setuju</span>
+                                        )}
+                                        {r.status === 'rejected' && (
+                                            <span className="rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-300">Ditolak</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <Sel value={r.kecamatan} onChange={e => onUpdate(r._uid, 'kecamatan', e.target.value)}>
+                                        <option value="">-- Pilih Kecamatan --</option>
+                                        {kecamatanList.map(kk => (
+                                            <option key={kk} value={kk}>{kk}</option>
+                                        ))}
+                                    </Sel>
+                                )}
+                            </td>
+                            <td className="py-2 pr-3">
+                                {readOnly ? (
+                                    <div>
+                                        <p className="text-white">{r.product_name}</p>
+                                        <p className="text-xs text-slate-500 font-mono">{r.product_code}</p>
+                                    </div>
+                                ) : (
+                                    <Sel value={r.product_id} onChange={e => onUpdate(r._uid, 'product_id', e.target.value)}>
+                                        <option value="">-- Pilih Produk --</option>
+                                        {(products ?? []).map(p => (
+                                            <option key={p.id} value={p.id}>{p.namaProduk ?? p.nama_produk}</option>
+                                        ))}
+                                    </Sel>
+                                )}
+                            </td>
+                            <td className="py-2 pr-3">
+                                {readOnly ? (
+                                    <span className="font-mono text-white">{fRupiah(r.harga_satuan)}</span>
+                                ) : (
+                                    <Inp type="number" min="0" step="1" value={r.harga_satuan}
+                                        onChange={e => onUpdate(r._uid, 'harga_satuan', e.target.value)} />
+                                )}
+                            </td>
+                            {!readOnly && (
+                                <td className="py-2">
+                                    <button type="button" onClick={() => onRemove(r._uid)}
+                                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
+                                        <Trash2 size={13} />
+                                    </button>
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
@@ -244,76 +147,65 @@ function ProductRateRow({ p, kecamatanList, partners, onChange, onRemove, readOn
 // ─── FormView ─────────────────────────────────────────────────────────────────
 
 function FormView({ editId, userRegion, onBack, onSaved }) {
-    const [formNotes,    setFormNotes]    = useState('');
-    const [formProducts, setFormProducts] = useState([]);
-    const [products,     setProducts]     = useState([]);
+    const [formNotes,     setFormNotes]     = useState('');
+    const [formRates,     setFormRates]     = useState([]);
+    const [products,      setProducts]      = useState([]);
     const [kecamatanList, setKecamatanList] = useState([]);
-    const [partners,     setPartners]     = useState([]);
-    const [refLoading,   setRefLoading]   = useState(true);
-    const [saving,       setSaving]       = useState(false);
-    const [submitting,   setSubmitting]   = useState(false);
-    const [error,        setError]        = useState(null);
+    const [refLoading,    setRefLoading]    = useState(true);
+    const [saving,        setSaving]        = useState(false);
+    const [submitting,    setSubmitting]    = useState(false);
+    const [error,         setError]         = useState(null);
     const isEdit = Boolean(editId);
-
-    const usedProductIds = new Set(formProducts.map(p => String(p.product_id)));
-    const availProducts  = products.filter(p => !usedProductIds.has(String(p.id)));
 
     useEffect(() => {
         setRefLoading(true);
         const tasks = [
             api.get('/products', { status: 'Aktif', per_page: 100 }),
             api.get('/cost-rates/kecamatan'),
-            api.get('/transport-partner-rates'),
         ];
         if (editId) tasks.push(api.get(`/cost-rates/${editId}`));
 
         Promise.all(tasks)
-            .then(([prodRes, kecamatanRes, partnersRes, detailRes]) => {
+            .then(([prodRes, kecamatanRes, detailRes]) => {
                 setProducts(Array.isArray(prodRes) ? prodRes : (prodRes.data ?? []));
                 setKecamatanList(kecamatanRes ?? []);
-                setPartners(partnersRes ?? []);
 
                 if (detailRes) {
                     setFormNotes(detailRes.notes ?? '');
-                    setFormProducts(groupItemsByProduct(detailRes.items));
+                    setFormRates((detailRes.items ?? []).map(it => ({
+                        _uid:         nextUid(),
+                        product_id:   it.product_id,
+                        product_code: it.product_code,
+                        product_name: it.product_name,
+                        kecamatan:    it.kecamatan,
+                        harga_satuan: String(it.harga_satuan),
+                        status:       it.status,
+                    })));
                 }
             })
             .catch(e => setError(e.message || 'Gagal memuat data.'))
             .finally(() => setRefLoading(false));
     }, [editId]);
 
-    function addProduct(e) {
-        const productId = e.target.value;
-        if (!productId) return;
-        const found = products.find(p => String(p.id) === productId);
-        if (!found) return;
-        setFormProducts(ps => [...ps, {
-            ...emptyProduct(),
-            product_id:   found.id,
-            product_code: found.kodeProduk ?? found.kode_produk ?? '',
-            product_name: found.namaProduk ?? found.nama_produk ?? '',
-        }]);
-        e.target.value = '';
+    function addRate() {
+        setFormRates(rs => [...rs, emptyRate()]);
     }
 
-    function updateProduct(uid, newP) {
-        setFormProducts(ps => ps.map(p => p._uid === uid ? newP : p));
+    function updateRate(uid, field, value) {
+        setFormRates(rs => rs.map(r => r._uid === uid ? { ...r, [field]: value } : r));
     }
 
-    function removeProduct(uid) {
-        setFormProducts(ps => ps.filter(p => p._uid !== uid));
+    function removeRate(uid) {
+        setFormRates(rs => rs.filter(r => r._uid !== uid));
     }
 
     function buildPayload() {
         return {
             notes: formNotes || null,
-            products: formProducts.map(p => ({
-                product_id: p.product_id,
-                rates: p.rates.map(r => ({
-                    kecamatan:         r.kecamatan,
-                    harga_satuan:      parseFloat(r.harga_satuan),
-                    transport_partner: r.transport_partner,
-                })),
+            rates: formRates.map(r => ({
+                product_id:   r.product_id,
+                kecamatan:    r.kecamatan,
+                harga_satuan: parseFloat(r.harga_satuan),
             })),
         };
     }
@@ -367,7 +259,7 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                     <ArrowLeft size={16} /> Kembali ke Daftar
                 </button>
                 <h1 className="text-2xl font-semibold text-white">
-                    {isEdit ? 'Edit Tarif Biaya' : 'Buat Ajuan Tarif Biaya'}
+                    {isEdit ? 'Edit Harga Produk' : 'Buat Ajuan Harga Produk'}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">Region: <span className="text-white">{userRegion}</span></p>
             </div>
@@ -383,28 +275,22 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
 
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-slate-200">Tarif per Produk</h2>
-                        <Sel onChange={addProduct} className="w-56" disabled={!availProducts.length}>
-                            <option value="">{availProducts.length ? '+ Tambah Produk…' : 'Semua produk sudah ditambahkan'}</option>
-                            {availProducts.map(p => (
-                                <option key={p.id} value={p.id}>{p.namaProduk ?? p.nama_produk}</option>
-                            ))}
-                        </Sel>
+                        <h2 className="text-sm font-semibold text-slate-200">Harga Satuan per Produk &amp; Kecamatan</h2>
+                        <button type="button" onClick={addRate}
+                            className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 transition">
+                            <Plus size={11} /> Tambah Baris
+                        </button>
                     </div>
 
-                    {formProducts.length === 0 ? (
+                    {formRates.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-white/10 py-10 text-center">
-                            <Wallet size={24} className="mx-auto mb-2 text-slate-600" />
-                            <p className="text-sm text-slate-500">Belum ada produk. Pilih produk di atas untuk mulai.</p>
+                            <Package size={24} className="mx-auto mb-2 text-slate-600" />
+                            <p className="text-sm text-slate-500">Belum ada harga. Tambah baris untuk mulai.</p>
                         </div>
                     ) : (
-                        <div className="space-y-3">
-                            {formProducts.map(p => (
-                                <ProductRateRow key={p._uid} p={p} kecamatanList={kecamatanList} partners={partners}
-                                    onChange={newP => updateProduct(p._uid, newP)}
-                                    onRemove={() => removeProduct(p._uid)}
-                                    readOnly={false} />
-                            ))}
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 pb-4 pt-3">
+                            <RateTable rates={formRates} kecamatanList={kecamatanList} products={products}
+                                onUpdate={updateRate} onRemove={removeRate} readOnly={false} />
                         </div>
                     )}
                 </div>
@@ -414,13 +300,13 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                         className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-slate-400 hover:text-white transition">
                         Batal
                     </button>
-                    <button type="submit" disabled={saving || submitting || formProducts.length === 0}
+                    <button type="submit" disabled={saving || submitting || formRates.length === 0}
                         className="rounded-xl border border-slate-600 bg-slate-800 px-5 py-2.5 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition">
                         {saving ? 'Menyimpan…' : 'Simpan Draft'}
                     </button>
                     {isEdit && (
                         <button type="button" onClick={handleSubmit}
-                            disabled={saving || submitting || formProducts.length === 0}
+                            disabled={saving || submitting || formRates.length === 0}
                             className="flex items-center gap-2 rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-400 disabled:opacity-50 transition">
                             <Send size={14} />
                             {submitting ? 'Mengajukan…' : 'Ajukan ke SuperAdmin'}
@@ -466,8 +352,6 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
         </div>
     );
 
-    const grouped = groupItemsByProduct(detail?.items);
-
     return (
         <div className="space-y-6">
             <div>
@@ -478,7 +362,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                 <div className="flex items-start justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold text-white">
-                            Tarif Biaya — {detail?.region}
+                            Harga Produk — {detail?.region}
                         </h1>
                         <div className="mt-1 flex items-center gap-3">
                             <StatusChip value={detail?.status} />
@@ -509,7 +393,7 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
                     {userRole === 'AdminRegion' && (detail?.status === 'approved' || detail?.status === 'partially_approved') && (
                         <button onClick={onEdit}
                             className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition">
-                            Revisi Tarif
+                            Revisi Harga
                         </button>
                     )}
                 </div>
@@ -547,10 +431,11 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
             )}
 
             <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-slate-200">Tarif per Produk ({grouped.length} produk)</h2>
-                {grouped.map(p => (
-                    <ProductRateRow key={p._uid} p={p} kecamatanList={[]} onChange={() => {}} onRemove={() => {}} readOnly={true} />
-                ))}
+                <h2 className="text-sm font-semibold text-slate-200">Harga Satuan per Produk &amp; Kecamatan ({(detail?.items ?? []).length} baris)</h2>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 pb-4 pt-3">
+                    <RateTable rates={detail?.items ?? []} kecamatanList={[]} products={[]}
+                        onUpdate={() => {}} onRemove={() => {}} readOnly={true} />
+                </div>
             </div>
         </div>
     );
@@ -580,7 +465,7 @@ function ListView({ user, onNew, onEdit, onView }) {
     useEffect(() => { fetch(); }, [fetch]);
 
     async function handleDelete(id) {
-        if (!confirm('Hapus ajuan tarif ini?')) return;
+        if (!confirm('Hapus ajuan harga ini?')) return;
         try {
             await api.del(`/cost-rates/${id}`);
             fetch();
@@ -600,7 +485,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
     const columns = [
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
-        { key: 'items_count',   label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
+        { key: 'items_count',   label: 'Jumlah Harga', render: r => <span className="text-xs font-mono">{r.items_count} baris</span> },
         { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
         { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400 truncate block max-w-[140px]">{r.submitted_by}</span> },
         {
@@ -644,11 +529,11 @@ function ListView({ user, onNew, onEdit, onView }) {
         <div className="space-y-6">
             <div className="flex items-start justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold text-white">Alokasi Biaya</h1>
+                    <h1 className="text-2xl font-semibold text-white">Harga Produk</h1>
                     <p className="mt-1 text-sm text-slate-500">
                         {isAdminRegion
-                            ? `Tentukan harga satuan per kecamatan dan mitra transportir pengirim di ${user.region}.`
-                            : 'Pantau tarif biaya dari semua region.'}
+                            ? `Tentukan harga satuan produk per kecamatan di ${user.region}.`
+                            : 'Pantau ajuan harga produk dari semua region.'}
                     </p>
                 </div>
                 {isAdminRegion && (
@@ -683,7 +568,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
             <ErrBanner msg={error} />
 
-            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Belum ada ajuan tarif biaya." />
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Belum ada ajuan harga produk." />
             <Pagination meta={data} onPageChange={setPage} />
         </div>
     );
@@ -691,7 +576,7 @@ function ListView({ user, onNew, onEdit, onView }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function AlokasiBiaya({ user }) {
+export default function HargaProduk({ user }) {
     const [view,   setView]   = useState('list'); // 'list' | 'form' | 'detail'
     const [editId, setEditId] = useState(null);   // null = new, number = edit
     const [viewId, setViewId] = useState(null);

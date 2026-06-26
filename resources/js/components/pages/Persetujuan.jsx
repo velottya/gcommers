@@ -1,4 +1,4 @@
-import { CheckCircle, Coins, FileText, Package, Wallet, Warehouse, XCircle } from 'lucide-react';
+import { CheckCircle, Coins, FileText, Package, Truck, Wallet, Warehouse, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
@@ -182,9 +182,9 @@ function PartialReviewModal({ title, groups, onClose, onSubmit }) {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <button type="button" onClick={() => setGroup(g, 'approved')}
-                                        className="text-xs text-emerald-300 hover:underline">Setujui produk ini</button>
+                                        className="text-xs text-emerald-300 hover:underline">Setujui semua baris ini</button>
                                     <button type="button" onClick={() => setGroup(g, 'rejected')}
-                                        className="text-xs text-red-300 hover:underline">Tolak produk ini</button>
+                                        className="text-xs text-red-300 hover:underline">Tolak semua baris ini</button>
                                 </div>
                             </div>
                             <div className="divide-y divide-white/5">
@@ -232,7 +232,7 @@ function PartialReviewModal({ title, groups, onClose, onSubmit }) {
     );
 }
 
-// ─── Tab: Alokasi Biaya ───────────────────────────────────────────────────────
+// ─── Tab: Harga Produk ────────────────────────────────────────────────────────
 
 function groupItemsByProduct(items) {
     const map = new Map();
@@ -245,7 +245,7 @@ function groupItemsByProduct(items) {
     return Array.from(map.values());
 }
 
-function TabAlokasibiaya() {
+function TabHargaProduk() {
     const [data,          setData]          = useState(null);
     const [loading,       setLoading]       = useState(true);
     const [error,         setError]         = useState(null);
@@ -282,7 +282,7 @@ function TabAlokasibiaya() {
 
     const columns = [
         { key: 'region',       label: 'Region' },
-        { key: 'items_count',  label: 'Jumlah Tarif', render: r => <span className="text-xs font-mono">{r.items_count} tarif</span> },
+        { key: 'items_count',  label: 'Jumlah Harga', render: r => <span className="text-xs font-mono">{r.items_count} baris</span> },
         { key: 'submitted_by', label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
         { key: 'status',       label: 'Status', render: r => <StatusChip value={r.status} /> },
         { key: 'review_note',  label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
@@ -297,14 +297,14 @@ function TabAlokasibiaya() {
         },
     ];
 
-    const reviewGroups = targetDetail ? groupItemsByProduct(targetDetail.items).map(p => ({
-        key:         p.product_id,
-        productName: p.product_name,
-        productCode: p.product_code,
-        lines: p.rates.map(r => ({
+    const reviewGroups = targetDetail ? groupItemsByProduct(targetDetail.items).map(g => ({
+        key:         g.product_id,
+        productName: g.product_name,
+        productCode: g.product_code,
+        lines: g.rates.map(r => ({
             id:     r.id,
             label:  r.kecamatan,
-            detail: `${formatRupiah(r.harga_satuan)}/kg · ongkir via ${r.transport_partner || '—'}: ${formatRupiah(r.biaya_pengiriman)}/kg`,
+            detail: `Harga satuan: ${formatRupiah(r.harga_satuan)}`,
         })),
     })) : [];
 
@@ -322,7 +322,7 @@ function TabAlokasibiaya() {
 
             {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>}
 
-            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan tarif biaya." />
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan harga produk." />
             <Pagination meta={data} onPageChange={setPage} />
 
             {target && detailLoading && (
@@ -332,10 +332,119 @@ function TabAlokasibiaya() {
             )}
             {target && targetDetail && (
                 <PartialReviewModal
-                    title={`Tinjau Tarif Biaya — ${target.region}`}
+                    title={`Tinjau Harga Produk — ${target.region}`}
                     groups={reviewGroups}
                     onClose={closeReview}
                     onSubmit={(decisions, note) => api.post(`/cost-rates/${target.id}/review`, { decisions, review_note: note })}
+                />
+            )}
+        </div>
+    );
+}
+
+// ─── Tab: Alokasi Biaya Pengiriman ────────────────────────────────────────────
+
+function groupItemsByPartner(items) {
+    const map = new Map();
+    for (const it of (items ?? [])) {
+        if (!map.has(it.transport_partner)) {
+            map.set(it.transport_partner, { transport_partner: it.transport_partner, biaya_pengiriman: it.biaya_pengiriman, rows: [] });
+        }
+        map.get(it.transport_partner).rows.push(it);
+    }
+    return Array.from(map.values());
+}
+
+function TabAlokasiPengiriman() {
+    const [data,          setData]          = useState(null);
+    const [loading,       setLoading]       = useState(true);
+    const [error,         setError]         = useState(null);
+    const [page,          setPage]          = useState(1);
+    const [status,        setStatus]        = useState('');
+    const [target,        setTarget]        = useState(null);
+    const [targetDetail,  setTargetDetail]  = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+
+    const fetch = useCallback(() => {
+        setLoading(true);
+        api.get('/shipping-allocations', { page, ...(status ? { status } : {}) })
+            .then(setData)
+            .catch(e => setError(e.message))
+            .finally(() => setLoading(false));
+    }, [page, status]);
+
+    useEffect(() => { fetch(); }, [fetch]);
+
+    async function openReview(row) {
+        setTarget(row);
+        setDetailLoading(true);
+        try {
+            const detail = await api.get(`/shipping-allocations/${row.id}`);
+            setTargetDetail(detail);
+        } catch {
+            setTargetDetail(null);
+        } finally {
+            setDetailLoading(false);
+        }
+    }
+
+    function closeReview() { setTarget(null); setTargetDetail(null); fetch(); }
+
+    const columns = [
+        { key: 'region',       label: 'Region' },
+        { key: 'items_count',  label: 'Jumlah Kecamatan', render: r => <span className="text-xs font-mono">{r.items_count} baris</span> },
+        { key: 'submitted_by', label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400">{r.submitted_by}</span> },
+        { key: 'status',       label: 'Status', render: r => <StatusChip value={r.status} /> },
+        { key: 'review_note',  label: 'Catatan', render: r => r.review_note ? <span className="text-xs text-slate-400 truncate max-w-[120px] block">{r.review_note}</span> : null },
+        {
+            key: '_act', label: '',
+            render: r => r.status === 'submitted' ? (
+                <button onClick={() => openReview(r)}
+                    className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20 transition">
+                    Tinjau
+                </button>
+            ) : null,
+        },
+    ];
+
+    const reviewGroups = targetDetail ? groupItemsByPartner(targetDetail.items).map(g => ({
+        key:         g.transport_partner,
+        productName: g.transport_partner,
+        productCode: `Ongkir ${formatRupiah(g.biaya_pengiriman)}/kg`,
+        lines: g.rows.map(r => ({
+            id:    r.id,
+            label: r.kecamatan,
+        })),
+    })) : [];
+
+    return (
+        <div className="space-y-4">
+            <div className="flex gap-3">
+                <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
+                    className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300 outline-none focus:border-amber-400/30 transition">
+                    <option value="">Semua</option>
+                    <option value="submitted">Menunggu Persetujuan</option>
+                    <option value="approved">Disetujui</option>
+                    <option value="rejected">Ditolak</option>
+                </select>
+            </div>
+
+            {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</div>}
+
+            <Table columns={columns} data={data?.data} loading={loading} emptyMessage="Tidak ada ajuan alokasi biaya pengiriman." />
+            <Pagination meta={data} onPageChange={setPage} />
+
+            {target && detailLoading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                </div>
+            )}
+            {target && targetDetail && (
+                <PartialReviewModal
+                    title={`Tinjau Alokasi Biaya Pengiriman — ${target.region}`}
+                    groups={reviewGroups}
+                    onClose={closeReview}
+                    onSubmit={(decisions, note) => api.post(`/shipping-allocations/${target.id}/review`, { decisions, review_note: note })}
                 />
             )}
         </div>
@@ -748,22 +857,23 @@ function TabGudang() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const TABS = [
-    { key: 'biaya',   label: 'Alokasi Biaya',    icon: Wallet },
-    { key: 'quota',   label: 'Quota Subsidi',     icon: Coins },
-    { key: 'tagihan', label: 'Tagihan Transport', icon: FileText },
-    { key: 'stok',    label: 'Ajuan Stok',        icon: Package },
-    { key: 'gudang',  label: 'Ajuan Gudang',      icon: Warehouse },
+    { key: 'harga',     label: 'Harga Produk',                       icon: Wallet },
+    { key: 'pengiriman', label: 'Alokasi Biaya Pengiriman',          icon: Truck },
+    { key: 'quota',     label: 'Quota Subsidi',                      icon: Coins },
+    { key: 'tagihan',   label: 'Tagihan Transport',                  icon: FileText },
+    { key: 'stok',      label: 'Ajuan Stok',                         icon: Package },
+    { key: 'gudang',    label: 'Ajuan Gudang',                       icon: Warehouse },
 ];
 
 export default function Persetujuan() {
-    const [tab, setTab] = useState('biaya');
+    const [tab, setTab] = useState('harga');
 
     return (
         <div className="space-y-6">
             <div>
                 <h1 className="text-2xl font-semibold text-white">Persetujuan Ajuan</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                    Tinjau dan setujui ajuan alokasi biaya, quota subsidi, tagihan transportir, ajuan stok produk, dan ajuan gudang.
+                    Tinjau dan setujui ajuan harga produk, alokasi biaya pengiriman, quota subsidi, tagihan transportir, ajuan stok produk, dan ajuan gudang.
                 </p>
             </div>
 
@@ -779,11 +889,12 @@ export default function Persetujuan() {
                 ))}
             </div>
 
-            {tab === 'biaya'   && <TabAlokasibiaya />}
-            {tab === 'quota'   && <TabQuota />}
-            {tab === 'tagihan' && <TabTagihan />}
-            {tab === 'stok'    && <TabAjuanStok />}
-            {tab === 'gudang'  && <TabGudang />}
+            {tab === 'harga'      && <TabHargaProduk />}
+            {tab === 'pengiriman' && <TabAlokasiPengiriman />}
+            {tab === 'quota'      && <TabQuota />}
+            {tab === 'tagihan'    && <TabTagihan />}
+            {tab === 'stok'       && <TabAjuanStok />}
+            {tab === 'gudang'     && <TabGudang />}
         </div>
     );
 }

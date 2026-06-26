@@ -11,14 +11,13 @@ class CostRateItem extends Model
 
     protected $fillable = [
         'submission_id', 'product_id', 'product_code', 'product_name',
-        'kecamatan', 'transport_partner', 'harga_satuan', 'biaya_pengiriman', 'status',
+        'kecamatan', 'harga_satuan', 'status',
     ];
 
     protected function casts(): array
     {
         return [
-            'harga_satuan'      => 'decimal:2',
-            'biaya_pengiriman'  => 'decimal:2',
+            'harga_satuan' => 'decimal:2',
         ];
     }
 

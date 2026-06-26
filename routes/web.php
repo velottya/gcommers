@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\ShipmentController;
+use App\Http\Controllers\Api\ShippingAllocationController;
 use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
 use App\Http\Controllers\Api\TransportPartnerRateController;
@@ -92,6 +93,17 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     // Tarif Mitra Transportir (AdminRegion, referensi langsung tanpa approval)
     Route::get('/transport-partner-rates',  [TransportPartnerRateController::class, 'index']);
     Route::post('/transport-partner-rates', [TransportPartnerRateController::class, 'store']);
+
+    // Alokasi Biaya Pengiriman per Kecamatan (AdminRegion → submit → SuperAdmin approve)
+    Route::get('/shipping-allocations/kecamatan',    [ShippingAllocationController::class, 'kecamatanList']);
+    Route::get('/shipping-allocations/current',      [ShippingAllocationController::class, 'currentRates']);
+    Route::get('/shipping-allocations',              [ShippingAllocationController::class, 'index']);
+    Route::post('/shipping-allocations',             [ShippingAllocationController::class, 'store']);
+    Route::get('/shipping-allocations/{id}',         [ShippingAllocationController::class, 'show']);
+    Route::put('/shipping-allocations/{id}',         [ShippingAllocationController::class, 'update']);
+    Route::delete('/shipping-allocations/{id}',      [ShippingAllocationController::class, 'destroy']);
+    Route::post('/shipping-allocations/{id}/submit', [ShippingAllocationController::class, 'submit']);
+    Route::post('/shipping-allocations/{id}/review', [ShippingAllocationController::class, 'review']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
     Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);

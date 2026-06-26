@@ -39,7 +39,7 @@ const MENUS = {
         { icon: LayoutDashboard, label: 'Beranda',             path: '/dashboard' },
         { icon: ShoppingCart,    label: 'Daftar Pesanan',      path: '/orders' },
         { icon: Package,         label: 'Produk',              path: '/products' },
-        { icon: Wallet,          label: 'Alokasi Biaya',       path: '/alokasi-biaya' },
+        { icon: Wallet,          label: 'Harga Produk',        path: '/harga-produk' },
         { icon: Truck,           label: 'Tarif Transportir',   path: '/tarif-transportir' },
         { icon: Coins,           label: 'Quota Subsidi',       path: '/quota-subsidi' },
         { icon: Warehouse,       label: 'Daftar Gudang',       path: '/gudang' },

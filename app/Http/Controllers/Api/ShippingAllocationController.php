@@ -3,26 +3,31 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\CostRateItem;
-use App\Models\CostRateSubmission;
-use App\Models\KecamatanProductPrice;
 use App\Models\KecamatanShippingRate;
-use App\Models\Product;
+use App\Models\ShippingAllocationItem;
+use App\Models\ShippingAllocationSubmission;
+use App\Models\TransportPartnerRate;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
-class CostRateController extends Controller
+/**
+ * Alokasi biaya pengiriman per kecamatan: untuk tiap kecamatan, pilih 1 mitra
+ * transportir + ongkirnya (Rp/kg). Terpisah dari Harga Produk (CostRateController) --
+ * ongkir adalah soal "kecamatan ini dikirim mitra apa", lepas dari produk yang
+ * dikirim. 1 kecamatan = 1 mitra transportir per ajuan.
+ */
+class ShippingAllocationController extends Controller
 {
     // ── Daftar ajuan ──────────────────────────────────────────────────────────
 
     public function index(Request $request)
     {
         $user  = Auth::user();
-        $query = CostRateSubmission::withCount('items')
-                                    ->orderByDesc('created_at')
-                                    ->orderBy('region');
+        $query = ShippingAllocationSubmission::withCount('items')
+                                              ->orderByDesc('created_at')
+                                              ->orderBy('region');
 
         if ($user->Role === 'AdminRegion') {
             $query->where('region', $user->Region);
@@ -37,12 +42,12 @@ class CostRateController extends Controller
         return response()->json($query->paginate(20));
     }
 
-    // ── Detail satu ajuan (dengan baris tarif) ───────────────────────────────
+    // ── Detail satu ajuan (dengan baris kecamatan) ───────────────────────────
 
     public function show(int $id)
     {
         $user  = Auth::user();
-        $query = CostRateSubmission::with('items');
+        $query = ShippingAllocationSubmission::with('items');
 
         if ($user->Role === 'AdminRegion') {
             $query->where('region', $user->Region);
@@ -51,7 +56,7 @@ class CostRateController extends Controller
         return response()->json($query->findOrFail($id));
     }
 
-    // ── Daftar kecamatan untuk form tarif (tanpa pagination) ─────────────────
+    // ── Daftar kecamatan untuk form alokasi (tanpa pagination) ───────────────
 
     public function kecamatanList()
     {
@@ -81,27 +86,27 @@ class CostRateController extends Controller
         $submission = null;
 
         DB::transaction(function () use ($validated, $user, &$submission) {
-            $submission = CostRateSubmission::create([
+            $submission = ShippingAllocationSubmission::create([
                 'region'       => $user->Region,
                 'status'       => 'draft',
                 'notes'        => $validated['notes'] ?? null,
                 'submitted_by' => $user->Email,
             ]);
 
-            $this->syncItems($submission, $validated['rates']);
+            $this->syncItems($submission, $validated['items']);
         });
 
         return response()->json($submission->load('items'), 201);
     }
 
-    // ── Edit ajuan (hanya draft atau rejected) ────────────────────────────────
+    // ── Edit ajuan (hanya draft, rejected, approved, partially_approved) ─────
 
     public function update(Request $request, int $id)
     {
         $user       = Auth::user();
         abort_unless($user->Role === 'AdminRegion', 403);
 
-        $submission = CostRateSubmission::where('region', $user->Region)->findOrFail($id);
+        $submission = ShippingAllocationSubmission::where('region', $user->Region)->findOrFail($id);
         abort_unless(
             in_array($submission->status, ['draft', 'rejected', 'approved', 'partially_approved'], true),
             422,
@@ -117,7 +122,7 @@ class CostRateController extends Controller
             ]);
 
             $submission->items()->delete();
-            $this->syncItems($submission, $validated['rates']);
+            $this->syncItems($submission, $validated['items']);
         });
 
         return response()->json($submission->fresh()->load('items'));
@@ -130,7 +135,7 @@ class CostRateController extends Controller
         $user       = Auth::user();
         abort_unless($user->Role === 'AdminRegion', 403);
 
-        $submission = CostRateSubmission::where('region', $user->Region)->findOrFail($id);
+        $submission = ShippingAllocationSubmission::where('region', $user->Region)->findOrFail($id);
         abort_unless($submission->status === 'draft', 422, 'Hanya ajuan berstatus draft yang bisa dihapus.');
 
         $submission->delete();
@@ -145,24 +150,24 @@ class CostRateController extends Controller
         $user       = Auth::user();
         abort_unless($user->Role === 'AdminRegion', 403);
 
-        $submission = CostRateSubmission::where('region', $user->Region)->findOrFail($id);
+        $submission = ShippingAllocationSubmission::where('region', $user->Region)->findOrFail($id);
         abort_unless($submission->status === 'draft', 422, 'Ajuan ini sudah diajukan atau sudah diproses.');
 
-        abort_if($submission->items()->doesntExist(), 422, 'Ajuan harus memiliki minimal 1 tarif sebelum diajukan.');
+        abort_if($submission->items()->doesntExist(), 422, 'Ajuan harus memiliki minimal 1 alokasi sebelum diajukan.');
 
         $submission->update(['status' => 'submitted']);
 
         return response()->json($submission->fresh());
     }
 
-    // ── Tinjau: setujui/tolak per baris tarif (SuperAdmin) ────────────────────
+    // ── Tinjau: setujui/tolak per baris kecamatan (SuperAdmin) ────────────────
 
     public function review(Request $request, int $id)
     {
         $user = Auth::user();
         abort_unless($user->Role === 'SuperAdmin', 403);
 
-        $submission = CostRateSubmission::with('items')->findOrFail($id);
+        $submission = ShippingAllocationSubmission::with('items')->findOrFail($id);
         abort_unless($submission->status === 'submitted', 422, 'Ajuan belum diajukan.');
 
         $validated = $request->validate([
@@ -177,7 +182,7 @@ class CostRateController extends Controller
         abort_unless(
             empty(array_diff($itemIds, $decisionIds)) && empty(array_diff($decisionIds, $itemIds)),
             422,
-            'Keputusan harus mencakup seluruh baris tarif dalam ajuan ini.'
+            'Keputusan harus mencakup seluruh baris alokasi dalam ajuan ini.'
         );
 
         DB::transaction(function () use ($submission, $validated, $user) {
@@ -199,7 +204,7 @@ class CostRateController extends Controller
                 'review_note' => $validated['review_note'] ?? null,
             ]);
 
-            $this->refreshCurrentPrices($submission);
+            $this->refreshCurrentRates($submission);
         });
 
         return response()->json($submission->fresh()->load('items'));
@@ -210,36 +215,56 @@ class CostRateController extends Controller
     private function validatePayload(Request $request): array
     {
         $validated = $request->validate([
-            'notes'                  => 'nullable|string|max:1000',
-            'rates'                  => 'required|array|min:1',
-            'rates.*.product_id'     => 'required|integer|exists:product_master,id',
-            'rates.*.kecamatan'      => 'required|string|max:150',
-            'rates.*.harga_satuan'   => 'required|numeric|min:0',
+            'notes'                       => 'nullable|string|max:1000',
+            'items'                       => 'required|array|min:1',
+            'items.*.kecamatan'           => 'required|string|max:150',
+            'items.*.transport_partner'   => 'required|string|max:200',
         ]);
 
-        // Pasangan produk+kecamatan harus unik di seluruh ajuan.
+        // 1 kecamatan = 1 mitra transportir per ajuan.
         $seen = [];
-        foreach ($validated['rates'] as $rate) {
-            $key = $rate['product_id'].'|'.$rate['kecamatan'];
+        foreach ($validated['items'] as $item) {
             abort_if(
-                isset($seen[$key]),
+                isset($seen[$item['kecamatan']]),
                 422,
-                "Kombinasi produk dan kecamatan ({$rate['kecamatan']}) tidak boleh muncul lebih dari sekali."
+                "Kecamatan {$item['kecamatan']} tidak boleh muncul lebih dari sekali — 1 kecamatan hanya boleh punya 1 mitra transportir."
             );
-            $seen[$key] = true;
+            $seen[$item['kecamatan']] = true;
         }
 
         return $validated;
     }
 
-    // ── Harga terkini per kecamatan (current state, untuk konsumen luar) ────
+    private function syncItems(ShippingAllocationSubmission $submission, array $items): void
+    {
+        foreach ($items as $item) {
+            $shippingCost = TransportPartnerRate::where('region', $submission->region)
+                ->where('company_name', $item['transport_partner'])
+                ->value('shipping_cost_per_kg');
 
-    public function currentPrices(Request $request)
+            abort_if(
+                $shippingCost === null,
+                422,
+                "Belum ada tarif untuk mitra {$item['transport_partner']}, atur dulu di tab Menentukan Tarif Transportir."
+            );
+
+            ShippingAllocationItem::create([
+                'submission_id'     => $submission->id,
+                'kecamatan'         => $item['kecamatan'],
+                'transport_partner' => $item['transport_partner'],
+                'biaya_pengiriman'  => $shippingCost,
+            ]);
+        }
+    }
+
+    // ── Tarif pengiriman terkini per kecamatan (current state, konsumen luar) ─
+
+    public function currentRates(Request $request)
     {
         $user = Auth::user();
         abort_unless(in_array($user->Role, ['SuperAdmin', 'AdminRegion'], true), 403);
 
-        $query = KecamatanProductPrice::query();
+        $query = KecamatanShippingRate::query();
 
         if ($user->Role === 'AdminRegion') {
             $query->where('region', $user->Region);
@@ -247,55 +272,39 @@ class CostRateController extends Controller
             $query->where('region', $request->region);
         }
 
-        if ($request->filled('kecamatan')) {
-            $query->where('kecamatan', $request->kecamatan);
-        }
-
-        return response()->json($query->orderBy('kecamatan')->orderBy('product_name')->get());
+        return response()->json($query->orderBy('kecamatan')->get());
     }
 
     // ── "Current state" untuk konsumen luar (mis. app Flutter) ──────────────
+    //
+    // kecamatan_product_prices dipertahankan apa adanya (kontrak existing dengan
+    // app Flutter) — transport_partner/biaya_pengiriman di tabel itu sekarang
+    // disinkronkan dari sini, bukan dari Harga Produk.
 
-    private function refreshCurrentPrices(CostRateSubmission $submission): void
+    private function refreshCurrentRates(ShippingAllocationSubmission $submission): void
     {
         foreach ($submission->items as $item) {
             if ($item->status !== 'approved') {
                 continue;
             }
 
-            // Ongkir/mitra transportir bukan lagi bagian dari ajuan Harga Produk —
-            // diambil dari alokasi biaya pengiriman per kecamatan (kalau sudah diatur).
-            $shipping = KecamatanShippingRate::where('kecamatan', $item->kecamatan)->first();
-
-            KecamatanProductPrice::updateOrCreate(
-                ['kecamatan' => $item->kecamatan, 'product_id' => $item->product_id],
+            KecamatanShippingRate::updateOrCreate(
+                ['kecamatan' => $item->kecamatan],
                 [
                     'region'            => $submission->region,
-                    'product_code'      => $item->product_code,
-                    'product_name'      => $item->product_name,
-                    'harga_satuan'      => $item->harga_satuan,
-                    'biaya_pengiriman'  => $shipping?->biaya_pengiriman,
-                    'transport_partner' => $shipping?->transport_partner,
+                    'transport_partner' => $item->transport_partner,
+                    'biaya_pengiriman'  => $item->biaya_pengiriman,
                     'submission_id'     => $submission->id,
                     'approved_at'       => now(),
                 ]
             );
-        }
-    }
 
-    private function syncItems(CostRateSubmission $submission, array $rates): void
-    {
-        foreach ($rates as $rate) {
-            $product = Product::findOrFail($rate['product_id']);
-
-            CostRateItem::create([
-                'submission_id' => $submission->id,
-                'product_id'    => $product->id,
-                'product_code'  => $product->kode_produk,
-                'product_name'  => $product->nama_produk,
-                'kecamatan'     => $rate['kecamatan'],
-                'harga_satuan'  => $rate['harga_satuan'],
-            ]);
+            DB::table('kecamatan_product_prices')
+                ->where('kecamatan', $item->kecamatan)
+                ->update([
+                    'transport_partner' => $item->transport_partner,
+                    'biaya_pengiriman'  => $item->biaya_pengiriman,
+                ]);
         }
     }
 }
