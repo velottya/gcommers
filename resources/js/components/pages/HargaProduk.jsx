@@ -29,8 +29,35 @@ function fRupiah(val) {
 let _uid = 0;
 const nextUid = () => ++_uid;
 
-function emptyRate() {
-    return { _uid: nextUid(), product_id: '', product_code: '', product_name: '', kecamatan: '', harga_satuan: '' };
+function emptyRow() {
+    return { _uid: nextUid(), kecamatan: '', harga_satuan: '' };
+}
+
+function emptyGroup() {
+    return { _uid: nextUid(), product_id: '', rows: [emptyRow()] };
+}
+
+// Mengelompokkan baris item (flat, dari API) menjadi section per produk.
+function groupByProduct(items) {
+    const map = new Map();
+    for (const it of (items ?? [])) {
+        if (!map.has(it.product_id)) {
+            map.set(it.product_id, {
+                _uid:         nextUid(),
+                product_id:   it.product_id,
+                product_code: it.product_code,
+                product_name: it.product_name,
+                rows:         [],
+            });
+        }
+        map.get(it.product_id).rows.push({
+            _uid:         nextUid(),
+            kecamatan:    it.kecamatan,
+            harga_satuan: String(it.harga_satuan),
+            status:       it.status,
+        });
+    }
+    return Array.from(map.values());
 }
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
@@ -64,82 +91,103 @@ function ErrBanner({ msg }) {
     );
 }
 
-// ─── RateTable (dalam form edit / detail) ──────────────────────────────────────
+// ─── ProductSection (dalam form edit, bisa diedit) ─────────────────────────────
 
-function RateTable({ rates, kecamatanList, products, onUpdate, onRemove, readOnly }) {
-    if (rates.length === 0) {
-        return <p className="text-xs text-slate-600 italic py-2">Belum ada harga.</p>;
-    }
-
+function ProductSection({ group, products, kecamatanList, usedProductIds, onProductChange, onAddRow, onUpdateRow, onRemoveRow, onRemoveGroup }) {
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="text-xs text-slate-500 border-b border-white/8">
-                        <th className="text-left pb-2 font-medium">Kecamatan</th>
-                        <th className="text-left pb-2 font-medium w-48">Produk</th>
-                        <th className="text-left pb-2 font-medium w-36">Harga Satuan (Rp/kg)</th>
-                        {!readOnly && <th className="w-8" />}
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                    {rates.map(r => (
-                        <tr key={r._uid}>
-                            <td className="py-2 pr-3">
-                                {readOnly ? (
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-white">{r.kecamatan}</p>
-                                        {r.status === 'approved' && (
-                                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">Setuju</span>
-                                        )}
-                                        {r.status === 'rejected' && (
-                                            <span className="rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-300">Ditolak</span>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <Sel value={r.kecamatan} onChange={e => onUpdate(r._uid, 'kecamatan', e.target.value)}>
-                                        <option value="">-- Pilih Kecamatan --</option>
-                                        {kecamatanList.map(kk => (
-                                            <option key={kk} value={kk}>{kk}</option>
-                                        ))}
-                                    </Sel>
-                                )}
-                            </td>
-                            <td className="py-2 pr-3">
-                                {readOnly ? (
-                                    <div>
-                                        <p className="text-white">{r.product_name}</p>
-                                        <p className="text-xs text-slate-500 font-mono">{r.product_code}</p>
-                                    </div>
-                                ) : (
-                                    <Sel value={r.product_id} onChange={e => onUpdate(r._uid, 'product_id', e.target.value)}>
-                                        <option value="">-- Pilih Produk --</option>
-                                        {(products ?? []).map(p => (
-                                            <option key={p.id} value={p.id}>{p.namaProduk ?? p.nama_produk}</option>
-                                        ))}
-                                    </Sel>
-                                )}
-                            </td>
-                            <td className="py-2 pr-3">
-                                {readOnly ? (
-                                    <span className="font-mono text-white">{fRupiah(r.harga_satuan)}</span>
-                                ) : (
-                                    <Inp type="number" min="0" step="1" value={r.harga_satuan}
-                                        onChange={e => onUpdate(r._uid, 'harga_satuan', e.target.value)} />
-                                )}
-                            </td>
-                            {!readOnly && (
-                                <td className="py-2">
-                                    <button type="button" onClick={() => onRemove(r._uid)}
-                                        className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
-                                        <Trash2 size={13} />
-                                    </button>
-                                </td>
+        <div className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 bg-white/3 px-4 py-3">
+                <div className="flex-1 max-w-xs">
+                    <Sel value={group.product_id} onChange={e => onProductChange(group._uid, e.target.value)}>
+                        <option value="">-- Pilih Produk --</option>
+                        {products.map(p => (
+                            <option
+                                key={p.id} value={p.id}
+                                disabled={usedProductIds.includes(String(p.id)) && String(p.id) !== String(group.product_id)}
+                            >
+                                {p.namaProduk ?? p.nama_produk}
+                            </option>
+                        ))}
+                    </Sel>
+                </div>
+                <button type="button" onClick={() => onRemoveGroup(group._uid)}
+                    className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
+                    <Trash2 size={14} />
+                </button>
+            </div>
+
+            <div className="px-4 py-3 space-y-3">
+                {group.rows.length === 0 ? (
+                    <p className="text-xs text-slate-600 italic">Belum ada kecamatan.</p>
+                ) : (
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="text-xs text-slate-500 border-b border-white/8">
+                                <th className="text-left pb-2 font-medium">Kecamatan</th>
+                                <th className="text-left pb-2 font-medium w-36">Harga Satuan (Rp/kg)</th>
+                                <th className="w-8" />
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {group.rows.map(row => (
+                                <tr key={row._uid}>
+                                    <td className="py-2 pr-3">
+                                        <Sel value={row.kecamatan} onChange={e => onUpdateRow(group._uid, row._uid, 'kecamatan', e.target.value)}>
+                                            <option value="">-- Pilih Kecamatan --</option>
+                                            {kecamatanList.map(kk => (
+                                                <option key={kk} value={kk}>{kk}</option>
+                                            ))}
+                                        </Sel>
+                                    </td>
+                                    <td className="py-2 pr-3">
+                                        <Inp type="number" min="0" step="1" value={row.harga_satuan}
+                                            onChange={e => onUpdateRow(group._uid, row._uid, 'harga_satuan', e.target.value)} />
+                                    </td>
+                                    <td className="py-2">
+                                        <button type="button" onClick={() => onRemoveRow(group._uid, row._uid)}
+                                            className="rounded-lg p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition">
+                                            <Trash2 size={13} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+                <button type="button" onClick={() => onAddRow(group._uid)}
+                    className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 transition">
+                    <Plus size={11} /> Tambah Kecamatan
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── ProductSection read-only (di halaman detail) ──────────────────────────────
+
+function ProductSectionReadOnly({ group }) {
+    return (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+            <div className="border-b border-white/8 bg-white/3 px-4 py-3">
+                <p className="text-sm font-medium text-white">{group.product_name}</p>
+                <p className="text-xs text-slate-500 font-mono">{group.product_code}</p>
+            </div>
+            <div className="divide-y divide-white/5">
+                {group.rows.map(row => (
+                    <div key={row._uid} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <div className="flex items-center gap-2">
+                            <span className="text-white">{row.kecamatan}</span>
+                            {row.status === 'approved' && (
+                                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300">Setuju</span>
                             )}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+                            {row.status === 'rejected' && (
+                                <span className="rounded-full border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] text-red-300">Ditolak</span>
+                            )}
+                        </div>
+                        <span className="font-mono text-white">{fRupiah(row.harga_satuan)}</span>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
@@ -148,7 +196,7 @@ function RateTable({ rates, kecamatanList, products, onUpdate, onRemove, readOnl
 
 function FormView({ editId, userRegion, onBack, onSaved }) {
     const [formNotes,     setFormNotes]     = useState('');
-    const [formRates,     setFormRates]     = useState([]);
+    const [formGroups,    setFormGroups]    = useState([]);
     const [products,      setProducts]      = useState([]);
     const [kecamatanList, setKecamatanList] = useState([]);
     const [refLoading,    setRefLoading]    = useState(true);
@@ -172,43 +220,55 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
 
                 if (detailRes) {
                     setFormNotes(detailRes.notes ?? '');
-                    setFormRates((detailRes.items ?? []).map(it => ({
-                        _uid:         nextUid(),
-                        product_id:   it.product_id,
-                        product_code: it.product_code,
-                        product_name: it.product_name,
-                        kecamatan:    it.kecamatan,
-                        harga_satuan: String(it.harga_satuan),
-                        status:       it.status,
-                    })));
+                    setFormGroups(groupByProduct(detailRes.items));
                 }
             })
             .catch(e => setError(e.message || 'Gagal memuat data.'))
             .finally(() => setRefLoading(false));
     }, [editId]);
 
-    function addRate() {
-        setFormRates(rs => [...rs, emptyRate()]);
+    function addGroup() {
+        setFormGroups(gs => [...gs, emptyGroup()]);
     }
 
-    function updateRate(uid, field, value) {
-        setFormRates(rs => rs.map(r => r._uid === uid ? { ...r, [field]: value } : r));
+    function removeGroup(groupUid) {
+        setFormGroups(gs => gs.filter(g => g._uid !== groupUid));
     }
 
-    function removeRate(uid) {
-        setFormRates(rs => rs.filter(r => r._uid !== uid));
+    function updateGroupProduct(groupUid, productId) {
+        setFormGroups(gs => gs.map(g => g._uid === groupUid ? { ...g, product_id: productId } : g));
+    }
+
+    function addRow(groupUid) {
+        setFormGroups(gs => gs.map(g => g._uid === groupUid ? { ...g, rows: [...g.rows, emptyRow()] } : g));
+    }
+
+    function updateRow(groupUid, rowUid, field, value) {
+        setFormGroups(gs => gs.map(g => g._uid === groupUid
+            ? { ...g, rows: g.rows.map(r => r._uid === rowUid ? { ...r, [field]: value } : r) }
+            : g));
+    }
+
+    function removeRow(groupUid, rowUid) {
+        setFormGroups(gs => gs.map(g => g._uid === groupUid
+            ? { ...g, rows: g.rows.filter(r => r._uid !== rowUid) }
+            : g));
     }
 
     function buildPayload() {
         return {
             notes: formNotes || null,
-            rates: formRates.map(r => ({
-                product_id:   r.product_id,
-                kecamatan:    r.kecamatan,
-                harga_satuan: parseFloat(r.harga_satuan),
-            })),
+            rates: formGroups.flatMap(g => g.rows
+                .filter(r => g.product_id && r.kecamatan && r.harga_satuan !== '')
+                .map(r => ({
+                    product_id:   g.product_id,
+                    kecamatan:    r.kecamatan,
+                    harga_satuan: parseFloat(r.harga_satuan),
+                }))),
         };
     }
+
+    const ratesCount = buildPayload().rates.length;
 
     async function handleSave(e) {
         e.preventDefault();
@@ -276,21 +336,33 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold text-slate-200">Harga Satuan per Produk &amp; Kecamatan</h2>
-                        <button type="button" onClick={addRate}
+                        <button type="button" onClick={addGroup}
                             className="flex items-center gap-1 rounded-lg border border-teal-400/30 bg-teal-400/10 px-2.5 py-1.5 text-xs text-teal-300 hover:bg-teal-400/20 transition">
-                            <Plus size={11} /> Tambah Baris
+                            <Plus size={11} /> Tambah Produk
                         </button>
                     </div>
 
-                    {formRates.length === 0 ? (
+                    {formGroups.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-white/10 py-10 text-center">
                             <Package size={24} className="mx-auto mb-2 text-slate-600" />
-                            <p className="text-sm text-slate-500">Belum ada harga. Tambah baris untuk mulai.</p>
+                            <p className="text-sm text-slate-500">Belum ada produk. Tambah produk untuk mulai mengisi harga per kecamatan.</p>
                         </div>
                     ) : (
-                        <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 pb-4 pt-3">
-                            <RateTable rates={formRates} kecamatanList={kecamatanList} products={products}
-                                onUpdate={updateRate} onRemove={removeRate} readOnly={false} />
+                        <div className="space-y-4">
+                            {formGroups.map(g => (
+                                <ProductSection
+                                    key={g._uid}
+                                    group={g}
+                                    products={products}
+                                    kecamatanList={kecamatanList}
+                                    usedProductIds={formGroups.filter(o => o._uid !== g._uid).map(o => String(o.product_id)).filter(Boolean)}
+                                    onProductChange={updateGroupProduct}
+                                    onAddRow={addRow}
+                                    onUpdateRow={updateRow}
+                                    onRemoveRow={removeRow}
+                                    onRemoveGroup={removeGroup}
+                                />
+                            ))}
                         </div>
                     )}
                 </div>
@@ -300,13 +372,13 @@ function FormView({ editId, userRegion, onBack, onSaved }) {
                         className="rounded-xl border border-white/10 px-5 py-2.5 text-sm text-slate-400 hover:text-white transition">
                         Batal
                     </button>
-                    <button type="submit" disabled={saving || submitting || formRates.length === 0}
+                    <button type="submit" disabled={saving || submitting || ratesCount === 0}
                         className="rounded-xl border border-slate-600 bg-slate-800 px-5 py-2.5 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition">
                         {saving ? 'Menyimpan…' : 'Simpan Draft'}
                     </button>
                     {isEdit && (
                         <button type="button" onClick={handleSubmit}
-                            disabled={saving || submitting || formRates.length === 0}
+                            disabled={saving || submitting || ratesCount === 0}
                             className="flex items-center gap-2 rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-400 disabled:opacity-50 transition">
                             <Send size={14} />
                             {submitting ? 'Mengajukan…' : 'Ajukan ke SuperAdmin'}
@@ -351,6 +423,8 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
         </div>
     );
+
+    const groups = groupByProduct(detail?.items);
 
     return (
         <div className="space-y-6">
@@ -432,10 +506,15 @@ function DetailView({ submissionId, userRole, onBack, onEdit, onSubmitted }) {
 
             <div className="space-y-3">
                 <h2 className="text-sm font-semibold text-slate-200">Harga Satuan per Produk &amp; Kecamatan ({(detail?.items ?? []).length} baris)</h2>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 pb-4 pt-3">
-                    <RateTable rates={detail?.items ?? []} kecamatanList={[]} products={[]}
-                        onUpdate={() => {}} onRemove={() => {}} readOnly={true} />
-                </div>
+                {groups.length === 0 ? (
+                    <p className="text-xs text-slate-600 italic">Belum ada harga.</p>
+                ) : (
+                    <div className="space-y-4">
+                        {groups.map(g => (
+                            <ProductSectionReadOnly key={g._uid} group={g} />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

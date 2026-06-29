@@ -59,7 +59,9 @@ class DashboardController extends Controller
     {
         $company = trim($user->CompanyName ?? '');
 
-        $baseQuery = $company ? Order::where('Vendor', $company) : Order::query();
+        $baseQuery = $company
+            ? Order::whereHas('transportAssignments', fn ($q) => $q->where('company_name', $company))
+            : Order::query();
         $unreadNotifications = SystemNotification::where('isRead', false)
             ->when(
                 SystemNotification::where('UserEmail', $user->Email)->exists(),
@@ -69,11 +71,10 @@ class DashboardController extends Controller
 
         return [
             'assignedOrders'      => $company
-                ? Order::where('Vendor', $company)
-                    ->whereIn('Status', ['processing', 'shipped', 'on_delivery'])->count()
+                ? (clone $baseQuery)->whereIn('Status', ['processing', 'shipped', 'on_delivery'])->count()
                 : 0,
             'deliveredOrders'     => $company
-                ? Order::where('Vendor', $company)->where('Status', 'delivered')->count()
+                ? (clone $baseQuery)->where('Status', 'delivered')->count()
                 : 0,
             'unreadNotifications' => $unreadNotifications,
             'recentOrders'        => $this->formatOrders(
@@ -103,12 +104,11 @@ class DashboardController extends Controller
             return Order::query();
         }
 
-        $scopedQuery = Order::where('Vendor', $region);
-
-        if ($scopedQuery->exists()) {
-            return $scopedQuery;
-        }
-
-        return Order::query();
+        // Region pesanan ditentukan lewat kios pemesan (UserEmail -> Users.Region),
+        // bukan lewat Vendor (yang berisi nama mitra transportir) — lihat pola yang
+        // sama di OrderController::accessibleOrders().
+        return Order::whereIn('UserEmail', function ($q) use ($region) {
+            $q->select('Email')->from('Users')->where('Role', 'kiosk')->where('Region', $region);
+        });
     }
 }

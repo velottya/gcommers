@@ -70,12 +70,26 @@ export function OrderStatusBadge({ value }) {
     );
 }
 
-// ─── Tanda gudang belum ditetapkan (hanya relevan setelah order dibayar) ────
-export function GudangStatusBadge({ hasGudang, paymentStatus }) {
-    if (hasGudang || paymentStatus !== 'paid') return null;
+// ─── Status Pengajuan SO per pesanan: none | submitted | approved | rejected ─
+const SO_STATUS_LABEL = {
+    none:      'Belum Diajukan SO',
+    submitted: 'SO Menunggu Peninjauan',
+    approved:  'SO Disetujui',
+    rejected:  'SO Ditolak',
+};
+
+const SO_STATUS_CLASS = {
+    none:      'border-slate-500/25 bg-slate-500/10 text-slate-400',
+    submitted: 'border-amber-400/25 bg-amber-400/10 text-amber-300',
+    approved:  'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
+    rejected:  'border-red-400/25 bg-red-400/10 text-red-300',
+};
+
+export function SoStatusBadge({ status }) {
+    const value = status ?? 'none';
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-xs font-medium text-amber-300">
-            Gudang Belum Ditentukan
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${SO_STATUS_CLASS[value] ?? SO_STATUS_CLASS.none}`}>
+            {SO_STATUS_LABEL[value] ?? value}
         </span>
     );
 }

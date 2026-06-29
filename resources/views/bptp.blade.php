@@ -178,10 +178,6 @@
                 <td class="right">Rp {{ number_format($order->Subtotal ?? 0, 0, ',', '.') }}</td>
             </tr>
             <tr>
-                <td class="label">Biaya Pengiriman</td>
-                <td class="right">Rp {{ number_format($order->ShippingAmount ?? 0, 0, ',', '.') }}</td>
-            </tr>
-            <tr>
                 <td class="label">Pajak (PPH/PPN)</td>
                 <td class="right">Rp {{ number_format($order->TaxAmount ?? 0, 0, ',', '.') }}</td>
             </tr>

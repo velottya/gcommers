@@ -44,15 +44,15 @@ class TransportBillingController extends Controller
 
         $query = Order::where('Status', 'delivered');
         if ($company) {
-            $query->where('Vendor', $company);
+            $query->whereHas('transportAssignments', fn ($q) => $q->where('company_name', $company));
         }
 
         $query->whereYear('DeliveredAt', (int) $year)
               ->whereMonth('DeliveredAt', (int) $month);
 
-        $orders        = $query->get();
+        $orders        = $query->with('transportAssignments')->get();
         $totalOrders   = $orders->count();
-        $totalShipping = $orders->sum('ShippingAmount');
+        $totalShipping = OrderController::totalShippingCost($orders, $company ?: null);
         $totalAmount   = $orders->sum('TotalAmount');
 
         return response()->json([
@@ -83,19 +83,19 @@ class TransportBillingController extends Controller
 
         $query = Order::where('Status', 'delivered');
         if ($company) {
-            $query->where('Vendor', $company);
+            $query->whereHas('transportAssignments', fn ($q) => $q->where('company_name', $company));
         }
 
         $query->whereYear('DeliveredAt', (int) $year)
               ->whereMonth('DeliveredAt', (int) $month);
 
-        $orders = $query->get();
+        $orders = $query->with('transportAssignments')->get();
 
         $billing = TransportBilling::create([
             'company_name'   => $company,
             'period'         => $period,
             'total_orders'   => $orders->count(),
-            'total_shipping' => $orders->sum('ShippingAmount'),
+            'total_shipping' => OrderController::totalShippingCost($orders, $company ?: null),
             'total_amount'   => $orders->sum('TotalAmount'),
             'status'         => 'draft',
             'submitted_by'   => $user->Email,

@@ -18,6 +18,7 @@ import ProductDetail from './pages/ProductDetail';
 import ProductList from './pages/ProductList';
 import QuotaSubsidi from './pages/QuotaSubsidi';
 import RekapTagihan from './pages/RekapTagihan';
+import SoSubmissionList from './pages/SoSubmissionList';
 import SystemSettings from './pages/SystemSettings';
 import TarifTransportir from './pages/TarifTransportir';
 import TransportProfile from './pages/TransportProfile';
@@ -38,7 +39,9 @@ export default function App({ user }) {
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<Dashboard user={user} />} />
 
-                    <Route path="/orders" element={<OrderList user={user} />} />
+                    {role !== 'AdminTransport' && (
+                        <Route path="/orders" element={<OrderList user={user} />} />
+                    )}
                     <Route path="/orders/:id" element={<OrderDetail user={user} />} />
 
                     {role !== 'AdminTransport' && (
@@ -90,6 +93,9 @@ export default function App({ user }) {
                     )}
                     {role === 'AdminRegion' && (
                         <Route path="/tarif-transportir" element={<TarifTransportir user={user} />} />
+                    )}
+                    {role === 'AdminRegion' && (
+                        <Route path="/so-submissions" element={<SoSubmissionList user={user} />} />
                     )}
                     <Route
                         path="/ajuan-stok"

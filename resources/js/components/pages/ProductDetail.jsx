@@ -81,8 +81,6 @@ export default function ProductDetail() {
         { key: 'kecamatan',         label: 'Kecamatan',          render: r => <span className="font-medium text-white">{r.kecamatan}</span> },
         { key: 'region',           label: 'Region',             render: r => r.region || '—' },
         { key: 'harga_satuan',     label: 'Harga Satuan/kg',    render: r => formatRupiah(r.harga_satuan) },
-        { key: 'biaya_pengiriman', label: 'Ongkir/kg',          render: r => formatRupiah(r.biaya_pengiriman) },
-        { key: 'transport_partner',label: 'Mitra Transportir',  render: r => r.transport_partner || '—' },
         { key: 'period',           label: 'Periode Kuota',      render: r => r.period || '—' },
         { key: 'quota_ton',        label: 'Kuota',              render: r => fTon(r.quota_ton) },
         { key: 'used_ton',         label: 'Terpakai',           render: r => fTon(r.used_ton) },

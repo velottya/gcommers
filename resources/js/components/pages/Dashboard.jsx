@@ -91,7 +91,7 @@ export default function Dashboard({ user }) {
                 <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-base font-semibold text-white">Order Terbaru</h2>
                     <button
-                        onClick={() => navigate('/orders')}
+                        onClick={() => navigate(user.role === 'AdminTransport' ? '/alokasi-sopir' : '/orders')}
                         className="text-xs text-slate-400 hover:text-amber-300 transition"
                     >
                         Lihat semua →

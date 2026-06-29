@@ -7,7 +7,12 @@
 > tidak ada REST API perantara di antara keduanya. Jadi kontrak yang paling
 > penting di sini adalah **kontrak skema tabel**, bukan kontrak HTTP.
 >
-> Update terakhir: 2026-06-22.
+> Update terakhir: 2026-06-26 — admin console (AdminRegion) sekarang juga
+> menulis `Orders.Vendor` (lihat §3.1), dan langkah "Atur Pengiriman" lama
+> (truk penuh/parsial sebelum sopir ditugaskan) sudah dihapus dari admin
+> console. AdminTransport tetap mengalokasikan sopir+truk lewat halaman
+> "Alokasi Sopir" (`Shipments`, tidak berubah) — bagian §3.2 dan state
+> machine §5 masih berlaku apa adanya untuk load-in/load-out.
 
 ## 1. Aturan emas
 
@@ -57,11 +62,13 @@
 | `OrderStatus` | Flutter/backend (set `processing` saat `PaidAt` diisi) → lalu Flutter/Transportir lagi saat foto load-in/out (`shipping`/`delivered`) | Lihat state machine §5 |
 | `OrderStatusNote` | Admin console (AdminTransport/SuperAdmin) | Saat membatalkan order |
 | `DeliveredAt` | Flutter/Transportir | Saat foto load-out diupload (bareng `OrderStatus='delivered'`) |
-| `Vendor` | Flutter/backend pemesanan | Saat order dibuat (dipakai admin console untuk filter region/company — **pastikan nilainya konsisten** dengan `Users.Region` punya AdminRegion atau `Users.CompanyName` punya AdminTransport) |
+| `Vendor` | Flutter/backend pemesanan **saat order dibuat**; **bisa ditimpa admin console (AdminRegion)** setelah itu, lewat `PUT /orders/{id}/transport-partner` saat AdminRegion memilih mitra transportir untuk pengiriman | `ShipmentController` (antrian "Alokasi Sopir" AdminTransport) menyaring order lewat `Vendor == Users.CompanyName` — kalau Flutter mengisi nilai awal yang tidak match perusahaan transportir manapun, admin console akan menimpanya begitu AdminRegion menentukan mitra |
 
 Admin console **tidak pernah membuat baris `Orders`** — itu murni domain
 Flutter/backend pemesanan. Admin console hanya membaca, menampilkan, dan
-(khusus AdminTransport/SuperAdmin) bisa men-set `OrderStatus='cancelled'`.
+(khusus AdminTransport/SuperAdmin) bisa men-set `OrderStatus='cancelled'`,
+dan (khusus AdminRegion) bisa menimpa `Vendor` saat menentukan mitra
+transportir.
 
 ### 3.2 `Shipments` (sudah ada sebelumnya, FK ke `Orders.Id`)
 

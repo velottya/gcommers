@@ -10,7 +10,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductStockRequestController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\ShipmentController;
-use App\Http\Controllers\Api\ShippingAllocationController;
+use App\Http\Controllers\Api\SoSubmissionController;
 use App\Http\Controllers\Api\SubsidyQuotaController;
 use App\Http\Controllers\Api\TransportBillingController;
 use App\Http\Controllers\Api\TransportPartnerRateController;
@@ -33,9 +33,8 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/orders/{id}/bptp',           [OrderController::class, 'downloadBptp']);
     Route::get('/orders/{id}/surat-jalan',    [OrderController::class, 'downloadSuratJalan']);
     Route::post('/orders/{id}/cancel',        [OrderController::class, 'cancel']);
-    Route::get('/orders/{id}/gudang-options', [OrderController::class, 'gudangOptions']);
-    Route::put('/orders/{id}/gudang',         [OrderController::class, 'assignGudang']);
-    Route::put('/orders/{id}/pengiriman',     [OrderController::class, 'configurePengiriman']);
+    Route::get('/orders/{id}/transport-assignments', [OrderController::class, 'transportAssignments']);
+    Route::put('/orders/{id}/transport-assignments', [OrderController::class, 'saveTransportAssignments']);
     Route::get('/orders/{id}',                [OrderController::class, 'show']);
 
     // Literal routes sebelum wildcard {id}
@@ -94,17 +93,6 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::get('/transport-partner-rates',  [TransportPartnerRateController::class, 'index']);
     Route::post('/transport-partner-rates', [TransportPartnerRateController::class, 'store']);
 
-    // Alokasi Biaya Pengiriman per Kecamatan (AdminRegion → submit → SuperAdmin approve)
-    Route::get('/shipping-allocations/kecamatan',    [ShippingAllocationController::class, 'kecamatanList']);
-    Route::get('/shipping-allocations/current',      [ShippingAllocationController::class, 'currentRates']);
-    Route::get('/shipping-allocations',              [ShippingAllocationController::class, 'index']);
-    Route::post('/shipping-allocations',             [ShippingAllocationController::class, 'store']);
-    Route::get('/shipping-allocations/{id}',         [ShippingAllocationController::class, 'show']);
-    Route::put('/shipping-allocations/{id}',         [ShippingAllocationController::class, 'update']);
-    Route::delete('/shipping-allocations/{id}',      [ShippingAllocationController::class, 'destroy']);
-    Route::post('/shipping-allocations/{id}/submit', [ShippingAllocationController::class, 'submit']);
-    Route::post('/shipping-allocations/{id}/review', [ShippingAllocationController::class, 'review']);
-
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
     Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);
     Route::get('/quota-subsidi/current',      [SubsidyQuotaController::class, 'currentStock']);
@@ -119,9 +107,10 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     // Alokasi Sopir / Shipment tracking (AdminTransport)
     Route::get('/shipments',                  [ShipmentController::class, 'index']);
     Route::post('/shipments',                 [ShipmentController::class, 'store']);
-    Route::post('/shipments/{id}/assign',     [ShipmentController::class, 'assign']);
+    Route::get('/shipments/order/{orderId}',  [ShipmentController::class, 'orderShipments']);
     Route::get('/shipments/{id}/surat-jalan-pengantar', [ShipmentController::class, 'downloadSuratJalanPengantar']);
-    Route::delete('/shipments/{orderId}',     [ShipmentController::class, 'destroy']);
+    Route::put('/shipments/{id}',             [ShipmentController::class, 'update']);
+    Route::delete('/shipments/{id}',          [ShipmentController::class, 'destroy']);
 
     // Daftar Gudang - Ajuan AdminRegion (perlu approval SuperAdmin)
     Route::get('/gudang-submissions/wilayah', [GudangSubmissionController::class, 'wilayah']);
@@ -131,6 +120,13 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::delete('/gudang-submissions/{id}', [GudangSubmissionController::class, 'destroy']);
     Route::post('/gudang-submissions/{id}/approve', [GudangSubmissionController::class, 'approve']);
     Route::post('/gudang-submissions/{id}/reject',  [GudangSubmissionController::class, 'reject']);
+
+    // Pengajuan SO - AdminRegion merekap pesanan belum-SO per kecamatan+produk (perlu approval SuperAdmin)
+    Route::get('/so-submissions/preview',     [SoSubmissionController::class, 'preview']);
+    Route::get('/so-submissions',             [SoSubmissionController::class, 'index']);
+    Route::post('/so-submissions',            [SoSubmissionController::class, 'store']);
+    Route::get('/so-submissions/{id}',        [SoSubmissionController::class, 'show']);
+    Route::post('/so-submissions/{id}/review',[SoSubmissionController::class, 'review']);
 
     // Rekap & Tagihan Transport (AdminTransport + SuperAdmin)
     Route::get('/transport-billings',                    [TransportBillingController::class, 'index']);

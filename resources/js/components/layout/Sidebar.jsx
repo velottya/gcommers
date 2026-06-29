@@ -42,6 +42,7 @@ const MENUS = {
         { icon: Wallet,          label: 'Harga Produk',        path: '/harga-produk' },
         { icon: Truck,           label: 'Tarif Transportir',   path: '/tarif-transportir' },
         { icon: Coins,           label: 'Quota Subsidi',       path: '/quota-subsidi' },
+        { icon: Receipt,         label: 'Pengajuan SO',        path: '/so-submissions' },
         { icon: Warehouse,       label: 'Daftar Gudang',       path: '/gudang' },
         { icon: Users,           label: 'Admin Region',        path: '/admin-region' },
         { icon: Store,           label: 'Daftar Kiosk',        path: '/app-users' },
@@ -49,7 +50,6 @@ const MENUS = {
     ],
     AdminTransport: [
         { icon: LayoutDashboard, label: 'Beranda',             path: '/dashboard' },
-        { icon: Truck,           label: 'Daftar Pesanan',      path: '/orders' },
         { icon: UserCheck,       label: 'Alokasi Sopir',       path: '/alokasi-sopir' },
         { icon: Warehouse,       label: 'Daftar Gudang',       path: '/gudang' },
         { icon: FileText,        label: 'Rekap Tagihan',       path: '/rekap-tagihan' },

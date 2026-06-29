@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\CostRateItem;
 use App\Models\CostRateSubmission;
 use App\Models\KecamatanProductPrice;
-use App\Models\KecamatanShippingRate;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -263,10 +262,6 @@ class CostRateController extends Controller
                 continue;
             }
 
-            // Ongkir/mitra transportir bukan lagi bagian dari ajuan Harga Produk —
-            // diambil dari alokasi biaya pengiriman per kecamatan (kalau sudah diatur).
-            $shipping = KecamatanShippingRate::where('kecamatan', $item->kecamatan)->first();
-
             KecamatanProductPrice::updateOrCreate(
                 ['kecamatan' => $item->kecamatan, 'product_id' => $item->product_id],
                 [
@@ -274,8 +269,6 @@ class CostRateController extends Controller
                     'product_code'      => $item->product_code,
                     'product_name'      => $item->product_name,
                     'harga_satuan'      => $item->harga_satuan,
-                    'biaya_pengiriman'  => $shipping?->biaya_pengiriman,
-                    'transport_partner' => $shipping?->transport_partner,
                     'submission_id'     => $submission->id,
                     'approved_at'       => now(),
                 ]

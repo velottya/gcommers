@@ -72,8 +72,6 @@ class ProductController extends Controller
                 'kecamatan'         => $kecamatan,
                 'region'            => $price->region ?? $stock->region ?? null,
                 'harga_satuan'      => $price ? (float) $price->harga_satuan : null,
-                'biaya_pengiriman'  => $price ? (float) $price->biaya_pengiriman : null,
-                'transport_partner' => $price->transport_partner ?? null,
                 'price_updated_at'  => $price->approved_at ?? null,
                 'period'            => $stock->period ?? null,
                 'quota_ton'         => $stock ? (float) $stock->quota_ton : null,

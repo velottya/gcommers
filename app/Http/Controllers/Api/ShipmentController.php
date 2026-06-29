@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\GudangSubmission;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderTransportAssignment;
 use App\Models\Shipment;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -13,10 +14,17 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Alokasi Sopir (AdminTransport): membuat/mengubah baris `Shipments` untuk sebuah
- * order yang sudah dibayar. Transisi status selanjutnya (siap_muat -> dalam_perjalanan
- * -> selesai) dilakukan oleh app Transportir saat upload foto load-in/load-out —
- * controller ini TIDAK menyediakan endpoint untuk memaksa transisi tersebut.
+ * Alokasi Sopir (AdminTransport): satu order bisa dipecah ke beberapa truk,
+ * masing-masing membawa produk + tonase tertentu (1 baris `Shipments` = 1
+ * truk, lihat ProductId/QuotaTon/SlotIndex). AdminTransport hanya bisa
+ * mengalokasikan truk untuk produk & tonase yang sudah dijatah AdminRegion ke
+ * perusahaannya lewat `order_transport_assignments` (lihat
+ * OrderController::saveTransportAssignments) — TIDAK lagi disaring dari
+ * `Orders.Vendor`, karena 1 order kini bisa melibatkan lebih dari 1 mitra.
+ * AdminTransport langsung menugaskan sopir saat membuat slot. Transisi status
+ * selanjutnya (siap_muat -> dalam_perjalanan -> selesai) dilakukan oleh app
+ * Transportir saat upload foto load-in/load-out — controller ini TIDAK
+ * menyediakan endpoint untuk memaksa transisi tersebut.
  *
  * Lihat docs/ORDER_FLOW_CONTRACT.md.
  */
@@ -28,60 +36,114 @@ class ShipmentController extends Controller
         $this->ensureAdminTransport($user);
 
         $company = trim($user->CompanyName ?? '');
-        $query   = Order::query()->whereNotNull('PaidAt');
-
-        if ($company) {
-            $query->where('Vendor', $company);
-        }
+        $query   = $this->companyOrder($user);
 
         $orders = $query->orderBy('CreatedAt', 'desc')->paginate(20);
 
-        $orderIds  = $orders->pluck('Id')->all();
-        $shipments = Shipment::with('warehouse')->whereIn('OrderId', $orderIds)->get()->keyBy('OrderId');
+        $orderIds    = $orders->pluck('Id')->all();
+        $shipments   = Shipment::whereIn('OrderId', $orderIds)->where('CompanyName', $company)->get()->groupBy('OrderId');
+        $assignments = OrderTransportAssignment::whereIn('order_id', $orderIds)->where('company_name', $company)->get()->groupBy('order_id');
 
-        $orders->getCollection()->transform(function (Order $o) use ($shipments) {
-            $shipment = $shipments->get($o->Id);
+        $orders->getCollection()->transform(function (Order $o) use ($shipments, $assignments) {
+            $slots = $shipments->get($o->Id, collect());
+            $rows  = $assignments->get($o->Id, collect());
+
+            $assignedTon  = (float) $rows->sum('quota_ton');
+            $allocatedTon = (float) $slots->sum('QuotaTon');
 
             return [
-                'id'              => $o->Id,
-                'poNumber'        => $o->PoNumber,
-                'userEmail'       => $o->UserEmail,
-                'paymentStatus'   => $o->PaymentStatus,
-                'orderStatus'     => $o->EffectiveOrderStatus,
-                'createdAt'       => $o->CreatedAt,
-                'shipmentId'      => $shipment?->Id,
-                'shipmentStatus'  => $shipment?->Status,
-                'transportirEmail'=> $shipment?->TransportirEmail,
-                'driverName'      => $shipment?->DriverName,
-                'truckLabel'      => $shipment?->TruckLabel,
-                'warehouseName'   => $shipment?->warehouse?->nama_gudang,
-                'note'            => $shipment?->Note,
-                'muatInAt'        => $shipment?->MuatInCompletedAt,
-                'muatOutAt'       => $shipment?->MuatOutCompletedAt,
+                'id'            => $o->Id,
+                'poNumber'      => $o->PoNumber,
+                'userEmail'     => $o->UserEmail,
+                'paymentStatus' => $o->PaymentStatus,
+                'orderStatus'   => $o->EffectiveOrderStatus,
+                'createdAt'     => $o->CreatedAt,
+                'slotCount'     => $slots->count(),
+                'assignedTon'   => $assignedTon,
+                'allocatedTon'  => $allocatedTon,
+                'allocationStatus' => $slots->isEmpty()
+                    ? 'belum_dialokasikan'
+                    : (abs($allocatedTon - $assignedTon) < 0.01 ? 'penuh' : 'sebagian'),
             ];
         });
 
         return response()->json($orders);
     }
 
-    public function store(Request $request)
+    // ── Detail order untuk modal alokasi: produk yang dijatah company ini + slot truk yang sudah ada ──
+
+    public function orderShipments(int $orderId)
     {
         $user = Auth::user();
         $this->ensureAdminTransport($user);
 
-        $data = $request->validate([
-            'order_id'         => 'required|integer',
-            'transportir_email'=> 'required|email',
-            'warehouse_id'     => 'required|integer',
-            'note'             => 'nullable|string|max:500',
-        ]);
+        $company = trim($user->CompanyName ?? '');
+        $order   = $this->companyOrder($user)->where('Id', $orderId)->firstOrFail();
 
+        $assignments = OrderTransportAssignment::where('order_id', $order->Id)->where('company_name', $company)->get()->groupBy('product_id');
+        $shipments   = Shipment::with('warehouse')->where('OrderId', $order->Id)->where('CompanyName', $company)->orderBy('SlotIndex')->get();
+        $kiosk       = OrderController::resolveKiosk($order);
+
+        $allocatedByProduct = $shipments->groupBy('ProductId')->map(fn ($g) => (float) $g->sum('QuotaTon'));
+
+        $items = $assignments->map(function ($group, $productId) use ($allocatedByProduct) {
+            $first       = $group->first();
+            $assignedTon = (float) $group->sum('quota_ton');
+            $allocatedTon = (float) ($allocatedByProduct->get((int) $productId) ?? 0);
+
+            return [
+                'product_id'    => (int) $productId,
+                'product_code'  => $first->product_code,
+                'product_name'  => $first->product_name,
+                'purchased_ton' => $assignedTon,
+                'allocated_ton' => $allocatedTon,
+                'remaining_ton' => max(0, round($assignedTon - $allocatedTon, 2)),
+            ];
+        })->values();
+
+        return response()->json([
+            'order' => [
+                'id'          => $order->Id,
+                'poNumber'    => $order->PoNumber,
+                'userEmail'   => $order->UserEmail,
+                'orderStatus' => $order->EffectiveOrderStatus,
+                'kioskName'   => $kiosk?->KioskName ?: $kiosk?->DisplayName,
+            ],
+            'items'     => $items,
+            'shipments' => $shipments->map(fn (Shipment $s) => [
+                'id'               => $s->Id,
+                'productId'        => $s->ProductId,
+                'productCode'      => null, // diturunkan di frontend dari daftar items via productId
+                'productName'      => $s->ProductName,
+                'quotaTon'         => (float) $s->QuotaTon,
+                'status'           => $s->Status,
+                'locked'           => $s->Status !== Shipment::STATUS_SIAP_MUAT,
+                'driverName'       => $s->DriverName,
+                'transportirEmail' => $s->TransportirEmail,
+                'truckLabel'       => $s->TruckLabel,
+                'policeNumber'     => $s->PoliceNumber,
+                'note'             => $s->Note,
+                'muatInAt'         => $s->MuatInCompletedAt,
+                'muatOutAt'        => $s->MuatOutCompletedAt,
+            ])->values(),
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $user    = Auth::user();
+        $this->ensureAdminTransport($user);
         $company = trim($user->CompanyName ?? '');
 
-        $order = Order::whereNotNull('PaidAt')
-            ->where('Id', $data['order_id'])
-            ->when($company, fn ($q) => $q->where('Vendor', $company))
-            ->firstOrFail();
+        $data = $request->validate([
+            'order_id'          => 'required|integer',
+            'product_id'        => 'required|integer',
+            'quota_ton'         => 'required|numeric|min:0.01',
+            'transportir_email' => 'required|email',
+            'note'              => 'nullable|string|max:500',
+        ]);
+
+        $order = $this->companyOrder($user)->where('Id', $data['order_id'])->firstOrFail();
 
         abort_if(
             in_array($order->OrderStatus, ['delivered', 'cancelled'], true),
@@ -89,108 +151,87 @@ class ShipmentController extends Controller
             'Order sudah selesai/dibatalkan, tidak bisa dialokasikan sopir.'
         );
 
-        $driver = User::where('Email', $data['transportir_email'])
-            ->where('Role', 'transportir')
-            ->whereNotNull('Type')
-            ->when($company, fn ($q) => $q->where('CompanyName', $company))
-            ->firstOrFail();
+        $assignedTon = (float) OrderTransportAssignment::where('order_id', $order->Id)
+            ->where('product_id', $data['product_id'])
+            ->where('company_name', $company)
+            ->sum('quota_ton');
+        abort_if($assignedTon <= 0, 422, 'Produk ini belum dijatah AdminRegion ke perusahaan Anda.');
 
-        $warehouse = GudangSubmission::where('status', 'approved')->findOrFail($data['warehouse_id']);
+        $this->assertWithinRemaining($order->Id, (int) $data['product_id'], $company, $assignedTon, (float) $data['quota_ton']);
 
-        $kiosk = User::where('Email', $order->UserEmail)->where('Role', 'kiosk')->first();
+        $driver  = $this->findCompanyDriver($data['transportir_email'], $user);
+        $kiosk   = User::where('Email', $order->UserEmail)->where('Role', 'kiosk')->first();
+        $product = OrderItem::where('OrderId', $order->Id)->where('ProductId', $data['product_id'])->first();
 
-        $shipment = Shipment::where('OrderId', $order->Id)->first();
-        $isNew    = $shipment === null;
+        $shipment = DB::transaction(function () use ($order, $driver, $kiosk, $product, $data, $user, $company) {
+            $slotIndex = (int) Shipment::where('OrderId', $order->Id)->max('SlotIndex') + 1;
 
-        if (! $isNew && $shipment->Status !== Shipment::STATUS_SIAP_MUAT) {
-            abort(422, 'Pengiriman sudah berjalan, alokasi sopir tidak bisa diubah lagi.');
-        }
-
-        DB::transaction(function () use (&$shipment, $isNew, $order, $driver, $warehouse, $kiosk, $data, $user) {
-            $attrs = [
-                'WarehouseId'        => $warehouse->id,
+            $shipment = Shipment::create([
+                'ShipmentNumber'     => $this->nextShipmentNumber(),
+                'OrderId'            => $order->Id,
+                'ProductId'          => $product->ProductId,
+                'ProductName'        => $product->ProductName,
+                'QuotaTon'           => $data['quota_ton'],
+                'SlotIndex'          => $slotIndex,
+                'CompanyName'        => $company,
                 'DriverName'         => $driver->TransportirName ?: $driver->DisplayName,
                 'TransportirEmail'   => $driver->Email,
                 'TruckLabel'         => trim(($driver->Type ?: '') . ($driver->PoliceNumber ? " (Nopol: {$driver->PoliceNumber})" : '')) ?: null,
                 'PoliceNumber'       => $driver->PoliceNumber,
                 'DestinationLabel'   => $kiosk?->KioskName ?: $kiosk?->DisplayName,
                 'DestinationAddress' => trim(collect([$kiosk?->Address, $kiosk?->Kecamatan])->filter()->implode(', ')) ?: null,
-                'OriginLat'          => $warehouse->latitude,
-                'OriginLng'          => $warehouse->longitude,
                 'Note'               => $data['note'] ?? null,
                 'AssignedBy'         => $user->Email,
-            ];
+                'Status'             => Shipment::STATUS_SIAP_MUAT,
+                'CreatedAt'          => now(),
+            ]);
 
-            if ($isNew) {
-                $attrs['ShipmentNumber'] = $this->nextShipmentNumber();
-                $attrs['OrderId']        = $order->Id;
-                $attrs['Status']         = Shipment::STATUS_SIAP_MUAT;
-                $attrs['CreatedAt']      = now();
-                $shipment = Shipment::create($attrs);
-            } else {
-                $attrs['UpdatedAt'] = now();
-                $shipment->update($attrs);
-            }
-
-            // Jaga konsistensi tampilan: order yang baru dialokasikan minimal "processing".
             if (! $order->OrderStatus) {
                 $order->update(['OrderStatus' => 'processing']);
             }
+
+            return $shipment;
         });
 
-        return response()->json($shipment->load('warehouse'), $isNew ? 201 : 200);
+        return response()->json($shipment, 201);
     }
 
-    // ── Atur truk terdaftar + nama sopir manual untuk satu slot truk ─────────
-    // (Berbeda dari store(): store() mengasumsikan 1 shipment per order yang
-    // dibuat di sini juga; assign() mengisi sebuah slot yang SUDAH dibuat lebih
-    // dulu oleh AdminRegion lewat OrderController::configurePengiriman().)
-
-    public function assign(Request $request, int $shipmentId)
+    public function update(Request $request, int $id)
     {
-        $user = Auth::user();
-        abort_unless(in_array($user->Role, ['AdminTransport', 'SuperAdmin'], true), 403, 'Akses tidak diizinkan.');
+        $user     = Auth::user();
+        $this->ensureAdminTransport($user);
+        $company  = trim($user->CompanyName ?? '');
+
+        $shipment = Shipment::findOrFail($id);
+        $order    = $this->companyOrder($user)->where('Id', $shipment->OrderId)->firstOrFail();
+
+        abort_unless($shipment->Status === Shipment::STATUS_SIAP_MUAT, 422, 'Truk ini sudah berjalan, alokasi tidak bisa diubah lagi.');
 
         $data = $request->validate([
+            'quota_ton'         => 'required|numeric|min:0.01',
             'transportir_email' => 'required|email',
-            'driver_name'       => 'required|string|max:200',
+            'note'              => 'nullable|string|max:500',
         ]);
 
-        $shipment = Shipment::findOrFail($shipmentId);
+        $assignedTon = (float) OrderTransportAssignment::where('order_id', $order->Id)
+            ->where('product_id', $shipment->ProductId)
+            ->where('company_name', $company)
+            ->sum('quota_ton');
 
-        abort_unless(
-            $shipment->Status === Shipment::STATUS_BELUM_DITUGASKAN,
-            422,
-            'Truk untuk slot ini sudah dialokasikan.'
-        );
+        $this->assertWithinRemaining($order->Id, $shipment->ProductId, $company, $assignedTon, (float) $data['quota_ton'], excludeShipmentId: $shipment->Id);
 
-        $order = Order::where('Id', $shipment->OrderId)
-            ->when(
-                $user->Role === 'AdminTransport' && $user->Region,
-                fn ($q) => $q->whereIn('UserEmail', function ($q2) use ($user) {
-                    $q2->select('Email')->from('Users')->where('Role', 'kiosk')->where('Region', $user->Region);
-                })
-            )
-            ->firstOrFail();
-
-        $driver = User::where('Email', $data['transportir_email'])
-            ->where('Role', 'transportir')
-            ->whereNotNull('Type')
-            ->firstOrFail();
+        $driver = $this->findCompanyDriver($data['transportir_email'], $user);
 
         $shipment->update([
-            'DriverName'       => $data['driver_name'],
+            'QuotaTon'         => $data['quota_ton'],
+            'DriverName'       => $driver->TransportirName ?: $driver->DisplayName,
             'TransportirEmail' => $driver->Email,
             'TruckLabel'       => trim(($driver->Type ?: '') . ($driver->PoliceNumber ? " (Nopol: {$driver->PoliceNumber})" : '')) ?: null,
             'PoliceNumber'     => $driver->PoliceNumber,
-            'Status'           => Shipment::STATUS_SIAP_MUAT,
+            'Note'             => $data['note'] ?? null,
             'AssignedBy'       => $user->Email,
             'UpdatedAt'        => now(),
         ]);
-
-        if (! $order->OrderStatus) {
-            $order->update(['OrderStatus' => 'processing']);
-        }
 
         return response()->json($shipment->fresh());
     }
@@ -200,7 +241,7 @@ class ShipmentController extends Controller
         $user = Auth::user();
         abort_unless(in_array($user->Role, ['AdminTransport', 'AdminRegion', 'SuperAdmin'], true), 403, 'Akses tidak diizinkan.');
 
-        $shipment = Shipment::with(['order.gudangSubmission', 'warehouse'])->findOrFail($shipmentId);
+        $shipment = Shipment::with(['order'])->findOrFail($shipmentId);
 
         abort_if(
             $shipment->Status === Shipment::STATUS_BELUM_DITUGASKAN,
@@ -222,17 +263,13 @@ class ShipmentController extends Controller
         return $pdf->download($filename);
     }
 
-    public function destroy(int $orderId)
+    public function destroy(int $id)
     {
-        $user = Auth::user();
+        $user     = Auth::user();
         $this->ensureAdminTransport($user);
 
-        $company  = trim($user->CompanyName ?? '');
-        $order    = Order::where('Id', $orderId)
-            ->when($company, fn ($q) => $q->where('Vendor', $company))
-            ->firstOrFail();
-
-        $shipment = Shipment::where('OrderId', $order->Id)->firstOrFail();
+        $shipment = Shipment::findOrFail($id);
+        $this->companyOrder($user)->where('Id', $shipment->OrderId)->firstOrFail();
 
         abort_unless(
             $shipment->Status === Shipment::STATUS_SIAP_MUAT,
@@ -243,6 +280,50 @@ class ShipmentController extends Controller
         $shipment->delete();
 
         return response()->noContent();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private function companyOrder(User $user)
+    {
+        $company = trim($user->CompanyName ?? '');
+
+        return Order::whereNotNull('PaidAt')
+            ->when($company, fn ($q) => $q->whereHas('transportAssignments', fn ($q2) => $q2->where('company_name', $company)));
+    }
+
+    private function findCompanyDriver(string $email, User $user): User
+    {
+        $company = trim($user->CompanyName ?? '');
+
+        return User::where('Email', $email)
+            ->where('Role', 'transportir')
+            ->whereNotNull('Type')
+            ->when($company, fn ($q) => $q->where('CompanyName', $company))
+            ->firstOrFail();
+    }
+
+    /**
+     * Total QuotaTon yang sudah dialokasikan (semua slot milik company ini,
+     * kecuali $excludeShipmentId saat mengedit slot itu sendiri) ditambah ton baru
+     * tidak boleh melebihi jatah yang diberikan AdminRegion ke perusahaan ini
+     * untuk produk ini (toleransi 0.01).
+     */
+    private function assertWithinRemaining(int $orderId, int $productId, string $company, float $assignedTon, float $newTon, ?int $excludeShipmentId = null): void
+    {
+        $allocated = (float) Shipment::where('OrderId', $orderId)
+            ->where('ProductId', $productId)
+            ->where('CompanyName', $company)
+            ->when($excludeShipmentId, fn ($q) => $q->where('Id', '!=', $excludeShipmentId))
+            ->sum('QuotaTon');
+
+        $total = $allocated + $newTon;
+
+        abort_if(
+            $total - $assignedTon > 0.01,
+            422,
+            "Total alokasi produk ini melebihi jatah dari AdminRegion — sisa yang boleh dialokasikan: " . max(0, round($assignedTon - $allocated, 2)) . ' ton.'
+        );
     }
 
     private function nextShipmentNumber(): string

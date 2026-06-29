@@ -20,7 +20,13 @@ class TransportPartnerRateController extends Controller
         $region = $user->Role === 'AdminRegion' ? $user->Region : $request->input('region');
         abort_unless($region, 422, 'Region tidak ditemukan.');
 
-        $companies = User::where('Role', 'transportir')
+        // Users.Role di DB menyimpan nilai mentah ('transportir' untuk AdminTransport,
+        // lihat User::ADMIN_ROLE_STORAGE_MAP) — Type NULL membedakan akun level
+        // perusahaan dari akun sopir/truk perorangan (Type terisi), pola yang sama
+        // dipakai OrderController::coveredTransportPartners().
+        $companies = User::where('Role', User::ADMIN_ROLE_STORAGE_MAP['AdminTransport'])
+            ->whereNull('Type')
+            ->where('Region', $region)
             ->whereNotNull('CompanyName')
             ->where('CompanyName', '!=', '')
             ->distinct()

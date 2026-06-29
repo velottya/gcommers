@@ -40,6 +40,8 @@ class Shipment extends Model
         'Status',
         'Note',
         'AssignedBy',
+        'CompanyName',
+        'ProductId',
         'ProductName',
         'ProductCode',
         'QuotaTon',

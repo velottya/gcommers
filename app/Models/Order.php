@@ -14,6 +14,9 @@ class Order extends Model
      * Admin console hampir selalu hanya membaca Orders (baris dibuat oleh
      * Flutter/backend pemesanan — lihat docs/ORDER_FLOW_CONTRACT.md) — kolom
      * di bawah ini satu-satunya yang boleh ditulis dari sisi admin console.
+     * `Vendor` jadi pengecualian: awalnya diisi Flutter saat order dibuat,
+     * tapi sekarang juga ditimpa AdminRegion (OrderController::assignTransportPartner)
+     * saat memilih mitra transportir untuk pengiriman.
      */
     protected $fillable = [
         'OrderStatus',
@@ -21,6 +24,7 @@ class Order extends Model
         'GudangSubmissionId',
         'ResiNomor',
         'ShippingType',
+        'Vendor',
     ];
 
     protected $casts = [
@@ -31,7 +35,6 @@ class Order extends Model
         'VaExpiredAt'    => 'datetime',
         'Subtotal'       => 'decimal:2',
         'TaxAmount'      => 'decimal:2',
-        'ShippingAmount' => 'decimal:2',
         'TotalAmount'    => 'decimal:2',
     ];
 
@@ -57,6 +60,17 @@ class Order extends Model
     public function gudangSubmission()
     {
         return $this->belongsTo(GudangSubmission::class, 'GudangSubmissionId');
+    }
+
+    /**
+     * Alokasi mitra transportir per produk (AdminRegion) — 1 pesanan bisa punya
+     * lebih dari 1 mitra, masing-masing membawa produk & tonase tertentu. Ini
+     * menggantikan `Vendor` (1 mitra per pesanan) sebagai sumber kebenaran untuk
+     * antrian "Alokasi Sopir" & Tagihan Transport.
+     */
+    public function transportAssignments()
+    {
+        return $this->hasMany(OrderTransportAssignment::class, 'order_id', 'Id');
     }
 
     /**
