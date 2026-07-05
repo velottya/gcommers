@@ -1,9 +1,9 @@
-import { CheckCircle2, Download, FileText, Minus, MinusCircle, Search, X } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Download, FileText, Minus, Search, X, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { Pagination, Table } from '../ui/Table';
-import { OrderStatusBadge, PaymentStatusBadge, SoStatusBadge } from '../ui/StatusBadge';
+import { OrderStatusBadge } from '../ui/StatusBadge';
 
 function formatRupiah(val) {
     if (val == null) return '—';
@@ -31,25 +31,44 @@ function assignedShipments(row) {
     return (row.shipments ?? []).filter(s => s.status !== 'belum_ditugaskan');
 }
 
+function StatusChecklist({ paymentStatus, soStatus }) {
+    const isPaid = paymentStatus === 'paid';
+
+    let SoIcon = Circle;
+    let soColor = 'text-slate-500';
+    let soLabel = 'SO Belum';
+    if (soStatus === 'approved')  { SoIcon = CheckCircle2; soColor = 'text-emerald-400'; soLabel = 'SO Disetujui'; }
+    else if (soStatus === 'submitted') { SoIcon = Clock;   soColor = 'text-amber-400';   soLabel = 'SO Menunggu'; }
+    else if (soStatus === 'rejected')  { SoIcon = XCircle; soColor = 'text-red-400';     soLabel = 'SO Ditolak'; }
+
+    return (
+        <div className="flex flex-col gap-1">
+            <span className={`inline-flex items-center gap-1.5 text-xs ${isPaid ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {isPaid ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                {isPaid ? 'Lunas' : 'Belum Lunas'}
+            </span>
+            <span className={`inline-flex items-center gap-1.5 text-xs ${soColor}`}>
+                <SoIcon size={13} />
+                {soLabel}
+            </span>
+        </div>
+    );
+}
+
 function buildColumns(role, onDownloadSuratJalan) {
     const isAdminTransport = role === 'AdminTransport';
 
     return [
-        { key: 'poNumber',  label: 'PO Number', render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
-        { key: 'userEmail', label: 'Email',     render: r => orderField(r, 'userEmail', 'UserEmail') },
-        { key: 'vendor',    label: 'Vendor',    render: r => orderField(r, 'vendor', 'Vendor') },
+        { key: 'poNumber',  label: 'No Pesanan',  render: r => <span className="font-mono text-xs">{orderField(r, 'poNumber', 'PoNumber')}</span> },
+        { key: 'kioskName', label: 'Nama Kiosk', render: r => r.kioskName || orderField(r, 'userEmail', 'UserEmail') },
         ...(!isAdminTransport ? [
-            { key: 'totalAmount',   label: 'Total',      render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
-            { key: 'paymentStatus', label: 'Pembayaran', render: r => <PaymentStatusBadge value={orderField(r, 'paymentStatus', 'PaymentStatus')} /> },
+            { key: 'totalAmount', label: 'Total', render: r => formatRupiah(orderField(r, 'totalAmount', 'TotalAmount')) },
         ] : []),
         { key: 'orderStatus', label: 'Status Pemesanan', render: r => <OrderStatusBadge value={orderField(r, 'orderStatus', 'OrderStatus')} /> },
-        { key: 'soStatus', label: 'Pengajuan SO', render: r => <SoStatusBadge status={r.soStatus} /> },
-        {
-            key: 'pengiriman', label: 'Pengiriman',
-            render: r => r.shippingType
-                ? <CheckCircle2 size={17} className="text-emerald-400" title={`Pengiriman ${r.shippingType} sudah diatur`} />
-                : <MinusCircle size={17} className="text-amber-400" title="Pengiriman belum diatur" />,
-        },
+        ...(!isAdminTransport ? [{
+            key: 'checklist', label: 'Keterangan',
+            render: r => <StatusChecklist paymentStatus={orderField(r, 'paymentStatus', 'PaymentStatus')} soStatus={r.soStatus} />,
+        }] : []),
         ...(isAdminTransport ? [{
             key: 'suratJalan', label: 'Surat Jalan',
             render: r => {

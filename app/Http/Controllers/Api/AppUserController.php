@@ -56,7 +56,7 @@ class AppUserController extends Controller
         $authUser = Auth::user();
 
         // whereNotNull('Type') memisahkan app user dari admin AdminTransport yang juga ber-Role=transportir
-        $query = User::where('Role', 'transportir')->whereNotNull('Type');
+        $query = User::where('Role', 'transportir')->whereNotNull('Type')->with(['kabupaten', 'kecamatans.kabupaten']);
 
         // AdminTransport hanya melihat driver dari perusahaan mereka sendiri
         if ($authUser->Role === 'AdminTransport') {
@@ -376,6 +376,8 @@ class AppUserController extends Controller
 
     private function formatTransportir(User $u): array
     {
+        $kecamatans = $u->relationLoaded('kecamatans') ? $u->kecamatans : collect();
+
         return [
             'Id'              => $u->Id,
             'Email'           => (string) $u->Email,
@@ -388,6 +390,12 @@ class AppUserController extends Controller
             'Type'            => $u->Type ? (string) $u->Type : null,
             'PicName'         => $u->PicName ? (string) $u->PicName : null,
             'CreatedAt'       => $u->CreatedAt,
+            'Kabupaten'       => $u->kabupaten?->nama_kab,
+            'Kecamatans'      => $kecamatans->map(fn ($k) => [
+                'id'       => $k->id,
+                'nama_kec' => $k->nama_kec,
+                'nama_kab' => $k->kabupaten?->nama_kab,
+            ])->values()->all(),
         ];
     }
 }

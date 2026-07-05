@@ -46,7 +46,27 @@ class SubsidyQuotaController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        return response()->json($query->paginate(20));
+        $paginated = $query->paginate(20);
+
+        // Batch-count kecamatan allocations per submission (via products join)
+        $ids = $paginated->pluck('id')->all();
+        $kecamatanCounts = DB::table('subsidy_quota_kecamatan_allocations as a')
+            ->join('subsidy_quota_products as p', 'a.quota_product_id', '=', 'p.id')
+            ->whereIn('p.submission_id', $ids)
+            ->selectRaw('p.submission_id, COUNT(*) as kecamatan_count')
+            ->groupBy('p.submission_id')
+            ->pluck('kecamatan_count', 'submission_id')
+            ->all();
+
+        $emails  = $paginated->pluck('submitted_by')->unique()->filter()->values()->all();
+        $nameMap = User::whereIn('Email', $emails)->pluck('DisplayName', 'Email')->all();
+
+        return response()->json(
+            $paginated->through(fn (SubsidyQuotaSubmission $s) => array_merge($s->toArray(), [
+                'kecamatan_count'   => (int) ($kecamatanCounts[$s->id] ?? 0),
+                'submitted_by_name' => $nameMap[$s->submitted_by] ?? $s->submitted_by,
+            ]))
+        );
     }
 
     // ── Detail satu ajuan (dengan produk + alokasi kecamatan) ────────────────

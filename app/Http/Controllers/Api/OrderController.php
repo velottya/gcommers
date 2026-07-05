@@ -46,8 +46,12 @@ class OrderController extends Controller
 
         $orders = $query->orderBy('CreatedAt', 'desc')->paginate(20);
 
+        $emails = $orders->pluck('UserEmail')->unique()->filter()->values()->all();
+        $kioskNameMap = User::whereIn('Email', $emails)->where('Role', 'kiosk')
+            ->pluck('KioskName', 'Email')->all();
+
         return response()->json(
-            $orders->through(fn (Order $o) => $this->format($o, user: $user))
+            $orders->through(fn (Order $o) => $this->format($o, user: $user, kioskNameMap: $kioskNameMap))
         );
     }
 
@@ -388,7 +392,7 @@ class OrderController extends Controller
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private function format(Order $o, bool $withRelations = false, ?User $user = null): array
+    private function format(Order $o, bool $withRelations = false, ?User $user = null, array $kioskNameMap = []): array
     {
         $shipments      = $o->relationLoaded('shipments') ? $o->shipments : collect();
         $hideFinancials = $user?->Role === 'AdminTransport';
@@ -415,6 +419,7 @@ class OrderController extends Controller
             'resiNomor'       => $o->ResiNomor,
             'shippingType'    => $o->ShippingType,
             'userEmail'       => $o->UserEmail,
+            'kioskName'       => $kioskNameMap[$o->UserEmail] ?? null,
             'status'          => $o->Status,
             'orderStatus'     => $o->EffectiveOrderStatus,
             'orderStatusNote' => $o->OrderStatusNote,

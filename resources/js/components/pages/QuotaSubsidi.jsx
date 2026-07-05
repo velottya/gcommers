@@ -22,6 +22,11 @@ function StatusChip({ value }) {
     );
 }
 
+function fDate(val) {
+    if (!val) return '—';
+    return new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function fTon(val) {
     return val == null ? '—' : `${Number(val).toLocaleString('id-ID', { maximumFractionDigits: 2 })} TON`;
 }
@@ -633,20 +638,24 @@ function ListView({ user, onNew, onEdit, onView }) {
     }
 
     const columns = [
-        { key: 'period', label: 'Tahun', render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
+        { key: 'period',           label: 'Tahun',            render: r => <span className="font-semibold text-white">{formatPeriod(r.period)}</span> },
         ...(isSuperAdmin ? [{ key: 'region', label: 'Region' }] : []),
-        { key: 'status',         label: 'Status',   render: r => <StatusChip value={r.status} /> },
-        { key: 'products_count', label: 'Produk',   render: r => <span className="text-xs font-mono">{r.products_count} produk</span> },
+        { key: 'status',           label: 'Status',            render: r => <StatusChip value={r.status} /> },
+        { key: 'products_count',   label: 'Jumlah Produk',    render: r => <span className="text-xs font-mono">{r.products_count ?? 0} produk</span> },
+        { key: 'kecamatan_count',  label: 'Jumlah Kecamatan', render: r => <span className="text-xs font-mono">{r.kecamatan_count ?? 0} kecamatan</span> },
+        { key: 'created_at',       label: 'Tgl. Diajukan',    render: r => <span className="text-xs text-slate-400">{fDate(r.created_at)}</span> },
+        { key: 'reviewed_at',      label: 'Tgl. Ditinjau',    render: r => <span className="text-xs text-slate-400">{fDate(r.reviewed_at)}</span> },
         {
-            key: 'created_at', label: 'Tanggal Diajukan',
-            render: r => <span className="text-xs text-slate-400">{r.created_at ? new Date(r.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>,
+            key: 'notes', label: 'Catatan Pengaju',
+            render: r => r.notes
+                ? <span className="text-xs text-slate-400 max-w-[140px] truncate block" title={r.notes}>{r.notes}</span>
+                : <span className="text-xs text-slate-600">—</span>,
         },
-        { key: 'submitted_by',   label: 'Diajukan Oleh', render: r => <span className="text-xs text-slate-400 truncate block max-w-[140px]">{r.submitted_by}</span> },
         {
             key: 'review_note', label: 'Catatan Review',
             render: r => r.review_note
                 ? <span className="text-xs text-slate-400 max-w-[140px] truncate block" title={r.review_note}>{r.review_note}</span>
-                : null,
+                : <span className="text-xs text-slate-600">—</span>,
         },
         {
             key: '_act', label: '',

@@ -109,6 +109,7 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/shipments',                 [ShipmentController::class, 'store']);
     Route::get('/shipments/order/{orderId}',  [ShipmentController::class, 'orderShipments']);
     Route::get('/shipments/{id}/surat-jalan-pengantar', [ShipmentController::class, 'downloadSuratJalanPengantar']);
+    Route::get('/shipments/{id}/bptp',                  [ShipmentController::class, 'downloadBptp']);
     Route::put('/shipments/{id}',             [ShipmentController::class, 'update']);
     Route::delete('/shipments/{id}',          [ShipmentController::class, 'destroy']);
 
@@ -130,11 +131,15 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
 
     // Rekap & Tagihan Transport (AdminTransport + SuperAdmin)
     Route::get('/transport-billings',                    [TransportBillingController::class, 'index']);
+    Route::get('/transport-billings/summary',            [TransportBillingController::class, 'summary']);
     Route::get('/transport-billings/preview',            [TransportBillingController::class, 'preview']);
     Route::post('/transport-billings',                   [TransportBillingController::class, 'store']);
+    Route::get('/transport-billings/{id}',               [TransportBillingController::class, 'show']);
     Route::post('/transport-billings/{id}/submit',       [TransportBillingController::class, 'submit']);
+    Route::post('/transport-billings/{id}/recalculate',  [TransportBillingController::class, 'recalculate']);
     Route::post('/transport-billings/{id}/approve',      [TransportBillingController::class, 'approve']);
     Route::post('/transport-billings/{id}/reject',       [TransportBillingController::class, 'reject']);
+    Route::get('/transport-billings/{id}/download',      [TransportBillingController::class, 'download']);
 });
 
 // ─── SPA shell (catch-all — harus paling bawah) ──────────────────────────────

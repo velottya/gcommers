@@ -261,13 +261,26 @@ export default function AdminRegionList({ user }) {
     }
 
     const columns = [
-        { key: 'DisplayName', label: 'Nama' },
-        { key: 'Email',       label: 'Email' },
+        {
+            key: 'DisplayName', label: 'Admin Region',
+            render: r => (
+                <div>
+                    <p className="font-medium text-white text-sm">{r.DisplayName || '—'}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-[200px]">{r.Email}</p>
+                </div>
+            ),
+        },
         { key: 'Region',      label: 'Region', render: r => <span className="font-medium text-teal-300">{r.Region || '—'}</span> },
-        { key: 'Phone',       label: 'Telepon', render: r => r.Phone || '—' },
-        { key: 'KioskCount',  label: 'Jumlah Kiosk', render: r => <span className="font-mono text-white">{r.KioskCount ?? 0}</span> },
-        { key: 'LastLoginAt', label: 'Login Terakhir', render: r => <span className="text-xs text-slate-400">{formatDateTime(r.LastLoginAt)}</span> },
-        { key: 'CreatedAt',   label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
+        { key: 'KioskCount',  label: 'Kiosk', render: r => <span className="font-semibold text-white">{r.KioskCount ?? 0}</span> },
+        {
+            key: 'LastLoginAt', label: 'Login Terakhir',
+            render: r => (
+                <div>
+                    <p className="text-xs text-slate-300">{formatDateTime(r.LastLoginAt)}</p>
+                    <p className="text-xs text-slate-600">Bergabung {formatDate(r.CreatedAt)}</p>
+                </div>
+            ),
+        },
         ...(isSuperAdmin ? [{
             key: '_actions',
             label: '',

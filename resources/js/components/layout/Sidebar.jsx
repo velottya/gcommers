@@ -1,5 +1,4 @@
 import {
-    BarChart3,
     Bell,
     Coins,
     FileText,
@@ -25,7 +24,6 @@ const MENUS = {
     SuperAdmin: [
         { icon: LayoutDashboard, label: 'Beranda',             path: '/dashboard' },
         { icon: ShoppingCart,    label: 'Daftar Pesanan',      path: '/orders' },
-        { icon: BarChart3,       label: 'Rekap Pesanan',       path: '/pesanan-rekap' },
         { icon: Package,         label: 'Produk',              path: '/products' },
         { icon: Receipt,         label: 'Persetujuan Ajuan',   path: '/persetujuan' },
         { icon: Users,           label: 'Admin Region',        path: '/admin-region' },
@@ -55,7 +53,6 @@ const MENUS = {
         { icon: FileText,        label: 'Rekap Tagihan',       path: '/rekap-tagihan' },
         { icon: Store,           label: 'Daftar Sopir',        path: '/app-users' },
         { icon: Bell,            label: 'Notifikasi',          path: '/notifications' },
-        { icon: User,            label: 'Profil',              path: '/profile' },
     ],
 };
 

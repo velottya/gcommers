@@ -13,8 +13,11 @@ export default function Layout({ user, children }) {
                 onClose={() => setSidebarOpen(false)}
             />
 
-            {/* Main area — offset by sidebar width on desktop */}
-            <div className="flex flex-1 flex-col lg:ml-64">
+            {/* Spacer agar konten tidak tertindih sidebar yang fixed */}
+            <div className="hidden lg:block w-64 shrink-0" />
+
+            {/* Main area */}
+            <div className="flex flex-1 flex-col min-w-0">
                 <TopBar user={user} onMenuToggle={() => setSidebarOpen(true)} />
 
                 <main className="flex-1 overflow-y-auto p-4 lg:p-6">

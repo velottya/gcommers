@@ -145,25 +145,41 @@ export default function WarehouseList({ user }) {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     const columns = [
-        { key: 'nama_gudang', label: 'Nama Gudang' },
-        { key: 'region',      label: 'Region', render: r => r.region?.nama_reg || '—' },
-        { key: 'kabupaten',   label: 'Kabupaten/Kota', render: r => {
+        {
+            key: 'nama_gudang', label: 'Gudang',
+            render: r => (
+                <div>
+                    <p className="font-medium text-white text-sm">{r.nama_gudang}</p>
+                    {r.alamat_gudang && (
+                        <p className="text-xs text-slate-500 truncate max-w-[200px]" title={r.alamat_gudang}>
+                            {r.alamat_gudang}
+                        </p>
+                    )}
+                </div>
+            ),
+        },
+        { key: 'region',    label: 'Region',    render: r => r.region?.nama_reg || '—' },
+        {
+            key: 'pic', label: 'PIC',
+            render: r => (
+                <div>
+                    <p className="text-sm text-white">{r.nama_pic || '—'}</p>
+                    {r.no_telp && <p className="text-xs text-slate-500">{r.no_telp}</p>}
+                </div>
+            ),
+        },
+        { key: 'kabupaten', label: 'Kabupaten/Kota', render: r => {
             const names = [...new Set((r.kecamatans ?? []).map(k => k.kabupaten?.nama_kab).filter(Boolean))];
             if (names.length === 0) return '—';
             return <span title={names.join(', ')}>{names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]}</span>;
         } },
-        { key: 'kecamatan',   label: 'Kecamatan', render: r => {
+        { key: 'kecamatan', label: 'Cakupan Kec.', render: r => {
             const list = r.kecamatans ?? [];
             if (list.length === 0) return '—';
             const names = list.map(k => k.nama_kec);
-            return <span title={names.join(', ')}>{list.length > 1 ? `${names[0]} +${list.length - 1}` : names[0]}</span>;
+            return <span title={names.join(', ')} className="text-slate-300">{list.length > 1 ? `${names[0]} +${list.length - 1} lainnya` : names[0]}</span>;
         } },
-        { key: 'alamat_gudang', label: 'Alamat', render: r => r.alamat_gudang || '—' },
-        { key: 'no_telp',     label: 'No. Telp', render: r => r.no_telp || '—' },
-        {
-            key: 'coord', label: 'Koordinat',
-            render: r => (r.latitude && r.longitude) ? `${r.latitude}, ${r.longitude}` : '—',
-        },
+        { key: 'status', label: 'Status', render: r => <StatusChip value={r.status} /> },
         {
             key: '_actions', label: '',
             render: (r) => (

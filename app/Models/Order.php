@@ -86,28 +86,36 @@ class Order extends Model
      * 4 status pemesanan (hanya berarti setelah PaymentStatus = paid):
      * processing | shipping | delivered | cancelled.
      *
-     * Diutamakan dari kolom OrderStatus. Jika belum diisi oleh sistem yang membuat
-     * order (mis. saat fitur ini baru diadopsi di sisi Flutter), turunkan dari
-     * Shipment terkait, lalu fallback ke PaidAt, supaya tampilan tetap benar.
+     * Kalau Shipments sudah di-load, hitung dari semua slot truk supaya status
+     * mencerminkan progres seluruh mitra — bukan Orders.OrderStatus yang Flutter
+     * bisa saja sudah set 'delivered' begitu 1 sopir selesai load-out, padahal
+     * masih ada sopir lain dari mitra lain yang belum. 'cancelled' tetap diambil
+     * dari kolom eksplisit karena tidak bisa diturunkan dari Shipments.
      */
     public function getEffectiveOrderStatusAttribute(): ?string
     {
-        if ($this->OrderStatus) {
-            return $this->OrderStatus;
+        if ($this->OrderStatus === 'cancelled') {
+            return 'cancelled';
         }
 
         if ($this->relationLoaded('shipments') && $this->shipments->isNotEmpty()) {
             $statuses = $this->shipments->pluck('Status');
 
-            if ($statuses->contains(Shipment::STATUS_DALAM_PERJALANAN)) {
-                return 'shipping';
-            }
-
             if ($statuses->every(fn ($s) => $s === Shipment::STATUS_SELESAI)) {
                 return 'delivered';
             }
 
+            if ($statuses->contains(Shipment::STATUS_DALAM_PERJALANAN)
+                || $statuses->contains(Shipment::STATUS_SELESAI)) {
+                return 'shipping';
+            }
+
             return 'processing';
+        }
+
+        // Fallback saat Shipments belum di-load (mis. di index tanpa eager load).
+        if ($this->OrderStatus) {
+            return $this->OrderStatus;
         }
 
         return $this->PaidAt ? 'processing' : null;

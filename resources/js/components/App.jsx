@@ -13,7 +13,6 @@ import NotificationList from './pages/NotificationList';
 import OrderDetail from './pages/OrderDetail';
 import OrderList from './pages/OrderList';
 import Persetujuan from './pages/Persetujuan';
-import PesananRekap from './pages/PesananRekap';
 import ProductDetail from './pages/ProductDetail';
 import ProductList from './pages/ProductList';
 import QuotaSubsidi from './pages/QuotaSubsidi';
@@ -21,7 +20,6 @@ import RekapTagihan from './pages/RekapTagihan';
 import SoSubmissionList from './pages/SoSubmissionList';
 import SystemSettings from './pages/SystemSettings';
 import TarifTransportir from './pages/TarifTransportir';
-import TransportProfile from './pages/TransportProfile';
 import WarehouseList from './pages/WarehouseList';
 
 export default function App({ user }) {
@@ -60,10 +58,6 @@ export default function App({ user }) {
 
                     <Route path="/notifications" element={<NotificationList user={user} />} />
 
-                    {role === 'AdminTransport' && (
-                        <Route path="/profile" element={<TransportProfile user={user} />} />
-                    )}
-
                     {(role === 'SuperAdmin' || role === 'AdminRegion' || role === 'AdminTransport') && (
                         <Route path="/app-users" element={<AppUserList user={user} />} />
                     )}
@@ -71,9 +65,6 @@ export default function App({ user }) {
                     {/* ─── SuperAdmin only ─── */}
                     {role === 'SuperAdmin' && (
                         <Route path="/settings"       element={<SystemSettings user={user} />} />
-                    )}
-                    {role === 'SuperAdmin' && (
-                        <Route path="/pesanan-rekap"  element={<PesananRekap />} />
                     )}
                     {role === 'SuperAdmin' && (
                         <Route path="/persetujuan"    element={<Persetujuan />} />

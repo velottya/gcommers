@@ -107,7 +107,8 @@ export default function SoSubmissionList() {
 
     const columns = [
         { key: 'created_at',   label: 'Tanggal Ajuan', render: r => formatDateTime(r.created_at) },
-        { key: 'lines_count',  label: 'Jml Baris SO',  render: r => <span className="text-xs font-mono">{r.lines_count} baris</span> },
+        { key: 'so_codes_count', label: 'Jumlah Kode SO', render: r => <span className="text-xs font-mono">{r.so_codes_count ?? 0} kode</span> },
+        { key: 'gudang_count',   label: 'Jumlah Gudang',  render: r => r.gudang_count > 0 ? <span className="text-xs font-mono">{r.gudang_count} gudang</span> : <span className="text-xs text-slate-500">—</span> },
         { key: 'status',       label: 'Status',        render: r => <StatusChip value={r.status} /> },
         { key: 'reviewed_by',  label: 'Ditinjau Oleh',  render: r => r.reviewed_by ? <span className="text-xs text-slate-400">{r.reviewed_by}</span> : null },
         {

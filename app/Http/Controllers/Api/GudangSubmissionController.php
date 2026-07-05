@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\GudangSubmission;
 use App\Models\Kabupaten;
 use App\Models\Region;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -37,7 +38,13 @@ class GudangSubmissionController extends Controller
             $query->where(fn ($q) => $q->where('nama_gudang', 'like', "%{$s}%")->orWhere('nama_pic', 'like', "%{$s}%"));
         }
 
-        return response()->json($query->orderByDesc('created_at')->get());
+        $items   = $query->orderByDesc('created_at')->get();
+        $emails  = $items->pluck('submitted_by')->unique()->filter()->values()->all();
+        $nameMap = User::whereIn('Email', $emails)->pluck('DisplayName', 'Email')->all();
+
+        return response()->json($items->map(fn ($g) => array_merge($g->toArray(), [
+            'submitted_by_name' => $nameMap[$g->submitted_by] ?? $g->submitted_by,
+        ])));
     }
 
     // ── Pohon wilayah (propinsi → kabupaten → kecamatan) per region ─────────

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\GudangSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderTransportAssignment;
 use App\Models\Shipment;
+use App\Models\SoSubmissionLineOrder;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -44,7 +46,10 @@ class ShipmentController extends Controller
         $shipments   = Shipment::whereIn('OrderId', $orderIds)->where('CompanyName', $company)->get()->groupBy('OrderId');
         $assignments = OrderTransportAssignment::whereIn('order_id', $orderIds)->where('company_name', $company)->get()->groupBy('order_id');
 
-        $orders->getCollection()->transform(function (Order $o) use ($shipments, $assignments) {
+        $emails     = $orders->pluck('UserEmail')->unique()->filter()->all();
+        $kioskNames = User::whereIn('Email', $emails)->where('Role', 'kiosk')->pluck('KioskName', 'Email')->all();
+
+        $orders->getCollection()->transform(function (Order $o) use ($shipments, $assignments, $kioskNames) {
             $slots = $shipments->get($o->Id, collect());
             $rows  = $assignments->get($o->Id, collect());
 
@@ -55,6 +60,7 @@ class ShipmentController extends Controller
                 'id'            => $o->Id,
                 'poNumber'      => $o->PoNumber,
                 'userEmail'     => $o->UserEmail,
+                'kioskName'     => $kioskNames[$o->UserEmail] ?? null,
                 'paymentStatus' => $o->PaymentStatus,
                 'orderStatus'   => $o->EffectiveOrderStatus,
                 'createdAt'     => $o->CreatedAt,
@@ -101,13 +107,31 @@ class ShipmentController extends Controller
             ];
         })->values();
 
+        // Gudang yang tercantum di SO (approved) untuk order ini
+        $gudangList = SoSubmissionLineOrder::where('order_id', $order->Id)
+            ->whereHas('line', fn ($q) => $q->where('status', 'approved'))
+            ->with('line.gudangs')
+            ->get()
+            ->flatMap(fn ($lo) => $lo->line->gudangs ?? [])
+            ->unique('id')
+            ->map(fn ($g) => [
+                'nama_gudang' => $g->nama_gudang,
+                'alamat'      => trim(collect([$g->alamat_gudang, $g->kelurahan])->filter()->implode(', ')),
+                'nama_pic'    => $g->nama_pic,
+                'no_telp'     => $g->no_telp,
+            ])->values()->all();
+
+        $kioskAddress = trim(collect([$kiosk?->Address, $kiosk?->Kecamatan])->filter()->implode(', ')) ?: null;
+
         return response()->json([
             'order' => [
-                'id'          => $order->Id,
-                'poNumber'    => $order->PoNumber,
-                'userEmail'   => $order->UserEmail,
-                'orderStatus' => $order->EffectiveOrderStatus,
-                'kioskName'   => $kiosk?->KioskName ?: $kiosk?->DisplayName,
+                'id'           => $order->Id,
+                'poNumber'     => $order->PoNumber,
+                'userEmail'    => $order->UserEmail,
+                'orderStatus'  => $order->EffectiveOrderStatus,
+                'kioskName'    => $kiosk?->KioskName ?: $kiosk?->DisplayName,
+                'kioskAddress' => $kioskAddress,
+                'gudang'       => $gudangList,
             ],
             'items'     => $items,
             'shipments' => $shipments->map(fn (Shipment $s) => [
@@ -249,18 +273,70 @@ class ShipmentController extends Controller
             'Slot truk ini belum dialokasikan ke truk/sopir.'
         );
 
-        $order = $shipment->order;
-        $kiosk = OrderController::resolveKiosk($order);
+        $order  = $shipment->order;
+        $kiosk  = OrderController::resolveKiosk($order);
+        $soCode = $this->resolveShipmentSoCode($shipment);
 
         $pdf = Pdf::loadView('surat-jalan-pengantar', [
             'order'    => $order,
             'shipment' => $shipment,
             'kiosk'    => $kiosk,
+            'soCode'   => $soCode,
         ])->setPaper('a4', 'landscape');
 
         $filename = 'SuratJalan-' . $shipment->ShipmentNumber . '.pdf';
 
         return $pdf->download($filename);
+    }
+
+    public function downloadBptp(int $shipmentId)
+    {
+        $user = Auth::user();
+        abort_unless(in_array($user->Role, ['SuperAdmin', 'AdminRegion'], true), 403, 'Akses tidak diizinkan.');
+
+        $shipment = Shipment::with(['order'])->findOrFail($shipmentId);
+
+        abort_if(
+            $shipment->Status === Shipment::STATUS_BELUM_DITUGASKAN,
+            404,
+            'Slot truk ini belum dialokasikan ke truk/sopir.'
+        );
+
+        $order  = $shipment->order;
+        try { $order->load(['items.product']); } catch (\Throwable) {}
+
+        $kiosk        = OrderController::resolveKiosk($order);
+        $soCode       = $this->resolveShipmentSoCode($shipment);
+        $matchingItem = $order->relationLoaded('items')
+            ? $order->items->firstWhere('ProductId', $shipment->ProductId)
+            : null;
+
+        $pdf = Pdf::loadView('bptp-shipment', [
+            'order'        => $order,
+            'shipment'     => $shipment,
+            'kiosk'        => $kiosk,
+            'soCode'       => $soCode,
+            'matchingItem' => $matchingItem,
+        ])->setPaper('a4', 'portrait');
+
+        $slug     = preg_replace('/[^A-Za-z0-9\-]/', '', $shipment->ShipmentNumber ?? $order->PoNumber);
+        $filename = 'BPTP-' . $slug . '.pdf';
+
+        return $pdf->download($filename);
+    }
+
+    private function resolveShipmentSoCode(Shipment $shipment): ?string
+    {
+        if (! $shipment->ProductId) {
+            return null;
+        }
+
+        return SoSubmissionLineOrder::where('order_id', $shipment->OrderId)
+            ->where('product_id', $shipment->ProductId)
+            ->whereHas('line', fn ($q) => $q->where('status', 'approved'))
+            ->with('line')
+            ->orderByDesc('id')
+            ->first()?->line?->so_code;
     }
 
     public function destroy(int $id)

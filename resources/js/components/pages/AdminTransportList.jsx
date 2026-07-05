@@ -288,19 +288,49 @@ export default function AdminTransportList({ user }) {
     }
 
     const columns = [
-        { key: 'DisplayName',  label: 'Nama' },
-        { key: 'Email',        label: 'Email' },
-        { key: 'CompanyName',  label: 'Perusahaan', render: r => <span className="font-medium text-sky-300">{r.CompanyName || '—'}</span> },
-        { key: 'Region',       label: 'Region', render: r => r.Region || '—' },
-        { key: 'Kecamatans',   label: 'Wilayah Kerja', render: r => {
-            const list = r.Kecamatans ?? [];
-            if (list.length === 0) return '—';
-            return <span title={list.map(k => k.namaKec).join(', ')}>{list.length} kecamatan</span>;
-        } },
-        { key: 'Phone',        label: 'Telepon', render: r => r.Phone || '—' },
-        { key: 'DriverCount',  label: 'Jumlah Sopir', render: r => <span className="font-mono text-white">{r.DriverCount ?? 0}</span> },
-        { key: 'LastLoginAt',  label: 'Login Terakhir', render: r => <span className="text-xs text-slate-400">{formatDateTime(r.LastLoginAt)}</span> },
-        { key: 'CreatedAt',    label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
+        {
+            key: 'DisplayName', label: 'Admin Transport',
+            render: r => (
+                <div>
+                    <p className="font-medium text-white text-sm">{r.DisplayName || '—'}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-[200px]">{r.Email}</p>
+                </div>
+            ),
+        },
+        {
+            key: 'CompanyName', label: 'Perusahaan · Region',
+            render: r => (
+                <div>
+                    <p className="font-medium text-sky-300 text-sm">{r.CompanyName || '—'}</p>
+                    <p className="text-xs text-slate-500">{r.Region || '—'}</p>
+                </div>
+            ),
+        },
+        {
+            key: 'Kecamatans', label: 'Wilayah · Sopir',
+            render: r => {
+                const list = r.Kecamatans ?? [];
+                return (
+                    <div>
+                        <p className="text-sm text-white">
+                            {list.length > 0
+                                ? <span title={list.map(k => k.namaKec).join(', ')}>{list.length} kecamatan</span>
+                                : <span className="text-slate-600">—</span>}
+                        </p>
+                        <p className="text-xs text-slate-500">{r.DriverCount ?? 0} sopir</p>
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'LastLoginAt', label: 'Login Terakhir',
+            render: r => (
+                <div>
+                    <p className="text-xs text-slate-300">{formatDateTime(r.LastLoginAt)}</p>
+                    <p className="text-xs text-slate-600">Bergabung {formatDate(r.CreatedAt)}</p>
+                </div>
+            ),
+        },
         ...(isSuperAdmin ? [{
             key: '_actions',
             label: '',

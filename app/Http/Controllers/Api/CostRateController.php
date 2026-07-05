@@ -33,7 +33,26 @@ class CostRateController extends Controller
             $query->where('status', $request->status);
         }
 
-        return response()->json($query->paginate(20));
+        $paginated = $query->paginate(20);
+
+        // Batch-load submitter display names to avoid N+1
+        $emails  = $paginated->pluck('submitted_by')->unique()->filter()->values()->all();
+        $nameMap = User::whereIn('Email', $emails)->pluck('DisplayName', 'Email')->all();
+
+        // Batch-count distinct products per submission
+        $ids           = $paginated->pluck('id')->all();
+        $productCounts = CostRateItem::whereIn('submission_id', $ids)
+            ->selectRaw('submission_id, COUNT(DISTINCT product_id) as products_count')
+            ->groupBy('submission_id')
+            ->pluck('products_count', 'submission_id')
+            ->all();
+
+        return response()->json(
+            $paginated->through(fn (CostRateSubmission $s) => array_merge($s->toArray(), [
+                'submitted_by_name' => $nameMap[$s->submitted_by] ?? $s->submitted_by,
+                'products_count'    => (int) ($productCounts[$s->id] ?? 0),
+            ]))
+        );
     }
 
     // ── Detail satu ajuan (dengan baris tarif) ───────────────────────────────

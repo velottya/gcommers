@@ -100,6 +100,11 @@
             <td class="colon">:</td>
             <td>PETROKIMIA GRESIK, PT</td>
         </tr>
+        <tr>
+            <td class="label">Nomor SO</td>
+            <td class="colon">:</td>
+            <td><strong>{{ $soCode ?? '—' }}</strong></td>
+        </tr>
     </table>
 
     <table class="items-table">

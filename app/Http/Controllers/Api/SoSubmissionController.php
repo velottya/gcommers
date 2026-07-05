@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\GudangSubmission;
 use App\Models\Order;
 use App\Models\SoSubmission;
+use App\Models\User;
 use App\Models\SoSubmissionLine;
 use App\Models\SoSubmissionLineOrder;
 use Illuminate\Http\Request;
@@ -99,7 +100,36 @@ class SoSubmissionController extends Controller
             $query->where('status', $request->status);
         }
 
-        return response()->json($query->paginate(20));
+        $paginated = $query->paginate(20);
+        $ids = $paginated->pluck('id')->all();
+
+        // Batch-count approved SO codes (lines with status = approved) per submission
+        $soCodeCounts = SoSubmissionLine::whereIn('submission_id', $ids)
+            ->where('status', 'approved')
+            ->selectRaw('submission_id, COUNT(*) as so_codes_count')
+            ->groupBy('submission_id')
+            ->pluck('so_codes_count', 'submission_id')
+            ->all();
+
+        // Batch-count distinct gudangs assigned to approved lines per submission
+        $gudangCounts = DB::table('so_submission_line_gudangs as g')
+            ->join('so_submission_lines as l', 'g.line_id', '=', 'l.id')
+            ->whereIn('l.submission_id', $ids)
+            ->selectRaw('l.submission_id, COUNT(DISTINCT g.gudang_submission_id) as gudang_count')
+            ->groupBy('l.submission_id')
+            ->pluck('gudang_count', 'submission_id')
+            ->all();
+
+        $emails  = $paginated->pluck('submitted_by')->unique()->filter()->values()->all();
+        $nameMap = User::whereIn('Email', $emails)->pluck('DisplayName', 'Email')->all();
+
+        return response()->json(
+            $paginated->through(fn (SoSubmission $s) => array_merge($s->toArray(), [
+                'so_codes_count'    => (int) ($soCodeCounts[$s->id] ?? 0),
+                'gudang_count'      => (int) ($gudangCounts[$s->id] ?? 0),
+                'submitted_by_name' => $nameMap[$s->submitted_by] ?? $s->submitted_by,
+            ]))
+        );
     }
 
     public function show(int $id)

@@ -443,13 +443,27 @@ function DeleteConfirm({ user, onClose, onDeleted }) {
 // ─── Kiosk tab ────────────────────────────────────────────────────────────────
 
 const KIOSK_COLS = (onEdit, onDelete) => [
-    { key: 'Email',       label: 'Email' },
-    { key: 'DisplayName', label: 'Nama' },
-    { key: 'KioskName',   label: 'Nama Kiosk' },
-    { key: 'Region',      label: 'Region' },
-    { key: 'Kecamatan',   label: 'Kecamatan' },
-    { key: 'Phone',       label: 'Telepon' },
-    { key: 'CreatedAt',   label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
+    {
+        key: 'KioskName', label: 'Kiosk',
+        render: r => (
+            <div>
+                <p className="font-medium text-white text-sm">{r.KioskName || '—'}</p>
+                <p className="text-xs text-slate-500 truncate max-w-[180px]">{r.Email}</p>
+            </div>
+        ),
+    },
+    { key: 'Region',    label: 'Region',    render: r => r.Region || '—' },
+    {
+        key: 'Kabupaten', label: 'Kab/Kota · Kecamatan',
+        render: r => (
+            <div>
+                <p className="text-sm text-white">{r.Kabupaten || '—'}</p>
+                {r.Kecamatan && <p className="text-xs text-slate-500">{r.Kecamatan}</p>}
+            </div>
+        ),
+    },
+    { key: 'Phone',     label: 'Telepon',   render: r => r.Phone     || '—' },
+    { key: 'CreatedAt', label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
     {
         key: '_act', label: '',
         render: r => (
@@ -559,13 +573,44 @@ function KioskTab({ lockedRegion }) {
 // ─── Transportir tab ──────────────────────────────────────────────────────────
 
 const TRANS_COLS = (onEdit, onDelete) => [
-    { key: 'Email',           label: 'Email' },
-    { key: 'DisplayName',     label: 'Nama' },
-    { key: 'TransportirName', label: 'Driver' },
-    { key: 'CompanyName',     label: 'Perusahaan' },
-    { key: 'PoliceNumber',    label: 'No. Polisi' },
-    { key: 'Phone',           label: 'Telepon' },
-    { key: 'CreatedAt',       label: 'Bergabung', render: r => formatDate(r.CreatedAt) },
+    {
+        key: 'TransportirName', label: 'Sopir',
+        render: r => (
+            <div>
+                <p className="font-medium text-white text-sm">{r.TransportirName || r.DisplayName || '—'}</p>
+                <p className="text-xs text-slate-500 truncate max-w-[180px]">{r.Email}</p>
+            </div>
+        ),
+    },
+    { key: 'CompanyName', label: 'Perusahaan', render: r => r.CompanyName || '—' },
+    {
+        key: 'Kecamatans', label: 'Kab/Kota · Kecamatan',
+        render: r => {
+            const list = r.Kecamatans ?? [];
+            if (list.length === 0) return <span className="text-slate-600 text-xs">—</span>;
+            const kabs = [...new Set(list.map(k => k.nama_kab).filter(Boolean))];
+            const kecs = list.map(k => k.nama_kec).filter(Boolean);
+            return (
+                <div>
+                    <p className="text-sm text-white">{kabs.length ? kabs.join(', ') : '—'}</p>
+                    <p className="text-xs text-slate-500" title={kecs.join(', ')}>
+                        {kecs.length > 2 ? `${kecs[0]}, ${kecs[1]} +${kecs.length - 2}` : kecs.join(', ')}
+                    </p>
+                </div>
+            );
+        },
+    },
+    {
+        key: 'Type', label: 'Kendaraan',
+        render: r => (
+            <div>
+                <p className="text-sm text-white">{r.Type || '—'}</p>
+                {r.PoliceNumber && <p className="text-xs text-slate-500 font-mono">{r.PoliceNumber}</p>}
+            </div>
+        ),
+    },
+    { key: 'Phone',       label: 'Telepon',    render: r => r.Phone      || '—' },
+    { key: 'CreatedAt',   label: 'Bergabung',  render: r => formatDate(r.CreatedAt) },
     {
         key: '_act', label: '',
         render: r => (
