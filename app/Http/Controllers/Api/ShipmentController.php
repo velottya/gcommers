@@ -317,7 +317,7 @@ class ShipmentController extends Controller
             'kiosk'        => $kiosk,
             'soCode'       => $soCode,
             'matchingItem' => $matchingItem,
-        ])->setPaper('a4', 'portrait');
+        ])->setPaper('a4', 'landscape');
 
         $slug     = preg_replace('/[^A-Za-z0-9\-]/', '', $shipment->ShipmentNumber ?? $order->PoNumber);
         $filename = 'BPTP-' . $slug . '.pdf';
