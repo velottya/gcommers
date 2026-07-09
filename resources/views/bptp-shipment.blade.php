@@ -11,10 +11,15 @@
     /* Header */
     .header-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
     .header-table td { vertical-align: middle; }
-    .header-table .logo-cell { width: 260px; padding-right: 44px; }
-    .header-table .logo-cell img { width: 240px; height: 98px; }
+    .header-table .logo-cell { width: 220px; }
+    .header-table .spacer-cell { width: 220px; }
     .header-table .title-cell { text-align: center; }
-    .doc-title { font-size: 26px; font-weight: bold; }
+    .logo-inner { border-collapse: collapse; }
+    .logo-inner td { vertical-align: middle; padding: 0; }
+    .logo-inner .logo-img-cell { width: 50px; padding-right: 10px; }
+    .logo-inner .logo-img-cell img { width: 48px; height: 48px; }
+    .logo-inner .logo-text-cell { font-size: 14px; font-weight: bold; line-height: 1.15; letter-spacing: 0.02em; }
+    .doc-title { font-size: 18px; font-weight: bold; }
 
     /* Kepada */
     .kepada { margin-bottom: 10px; font-size: 13px; line-height: 1.4; }
@@ -60,8 +65,16 @@
     {{-- Header --}}
     <table class="header-table">
         <tr>
-            <td class="logo-cell"><img src="{{ public_path('logo-pg.png') }}" alt="Logo Petrokimia Gresik" /></td>
+            <td class="logo-cell">
+                <table class="logo-inner">
+                    <tr>
+                        <td class="logo-img-cell"><img src="{{ public_path('logo-pg.jpg') }}" alt="Logo Petrokimia Gresik" /></td>
+                        <td class="logo-text-cell">PETROKIMIA<br>GRESIK</td>
+                    </tr>
+                </table>
+            </td>
             <td class="title-cell"><div class="doc-title">PENGANTAR PENGAMBILAN BARANG</div></td>
+            <td class="spacer-cell"></td>
         </tr>
     </table>
 
@@ -158,7 +171,7 @@
             </td>
             <td>
                 <div class="role">Kepala Gudang</div>
-                <div class="sign-name">( )</div>
+                <div class="sign-name">( .................. )</div>
             </td>
         </tr>
     </table>

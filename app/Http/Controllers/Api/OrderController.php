@@ -345,11 +345,13 @@ class OrderController extends Controller
 
     /**
      * Ongkos kirim dihitung dari tarif mitra transportir (TransportPartnerRate,
-     * Rp/kg per region+company) × tonase yang dijatah ke mitra tsb di
-     * order_transport_assignments — bukan dari seluruh qty order, karena 1 order
-     * bisa dipecah ke beberapa mitra. Kalau $company diisi, hanya hitung porsi
-     * mitra itu; kalau null, hitung semua assignment di order-order ini gabungan
-     * (dipakai TransportBillingController & recap() di sini).
+     * Rp/kg) × tonase yang dijatah ke mitra tsb di order_transport_assignments —
+     * bukan dari seluruh qty order, karena 1 order bisa dipecah ke beberapa
+     * mitra. Tarif diprioritaskan per-kecamatan tujuan kiosk (TransportPartnerRate::
+     * resolveRate), jatuh ke tarif default per-region kalau kecamatannya belum
+     * diatur khusus. Kalau $company diisi, hanya hitung porsi mitra itu; kalau
+     * null, hitung semua assignment di order-order ini gabungan (dipakai
+     * TransportBillingController & recap() di sini).
      */
     public static function totalShippingCost(\Illuminate\Support\Collection $orders, ?string $company = null): float
     {
@@ -371,11 +373,11 @@ class OrderController extends Controller
                     continue;
                 }
 
-                $cacheKey = $kiosk->Region . '|' . $assignment->company_name;
+                $cacheKey = $kiosk->Region . '|' . $kiosk->KecamatanId . '|' . $assignment->company_name;
                 if (! array_key_exists($cacheKey, $rateCache)) {
-                    $rateCache[$cacheKey] = TransportPartnerRate::where('region', $kiosk->Region)
-                        ->where('company_name', $assignment->company_name)
-                        ->value('shipping_cost_per_kg');
+                    $rateCache[$cacheKey] = TransportPartnerRate::resolveRate(
+                        $kiosk->Region, $kiosk->KecamatanId, $assignment->company_name
+                    );
                 }
 
                 $rate = $rateCache[$cacheKey];
@@ -383,7 +385,7 @@ class OrderController extends Controller
                     continue;
                 }
 
-                $total += ((float) $assignment->quota_ton) * 1000 * (float) $rate;
+                $total += ((float) $assignment->quota_ton) * 1000 * $rate;
             }
         }
 

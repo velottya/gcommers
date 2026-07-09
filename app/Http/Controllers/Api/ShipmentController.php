@@ -327,13 +327,19 @@ class ShipmentController extends Controller
 
     private function resolveShipmentSoCode(Shipment $shipment): ?string
     {
-        if (! $shipment->ProductId) {
+        if (! $shipment->ProductId && ! $shipment->ProductCode) {
             return null;
         }
 
         return SoSubmissionLineOrder::where('order_id', $shipment->OrderId)
-            ->where('product_id', $shipment->ProductId)
-            ->whereHas('line', fn ($q) => $q->where('status', 'approved'))
+            ->when($shipment->ProductId, fn ($q) => $q->where('product_id', $shipment->ProductId))
+            ->whereHas('line', function ($q) use ($shipment) {
+                $q->where('status', 'approved');
+                // Shipment lama tidak menyimpan ProductId — cocokkan lewat product_code sebagai fallback.
+                if (! $shipment->ProductId && $shipment->ProductCode) {
+                    $q->where('product_code', $shipment->ProductCode);
+                }
+            })
             ->with('line')
             ->orderByDesc('id')
             ->first()?->line?->so_code;

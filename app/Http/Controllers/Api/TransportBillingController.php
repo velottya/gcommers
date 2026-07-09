@@ -257,28 +257,29 @@ class TransportBillingController extends Controller
             ->orderBy('SlotIndex')
             ->get();
 
-        $emails      = $orders->pluck('UserEmail')->unique()->all();
-        $kioskUsers  = User::whereIn('Email', $emails)->where('Role', 'kiosk')->get();
-        $kioskRegion = $kioskUsers->pluck('Region', 'Email')->all();
-        $kioskName   = $kioskUsers->pluck('KioskName', 'Email')->all();
+        $emails         = $orders->pluck('UserEmail')->unique()->all();
+        $kioskUsers     = User::whereIn('Email', $emails)->where('Role', 'kiosk')->get();
+        $kioskRegion    = $kioskUsers->pluck('Region', 'Email')->all();
+        $kioskKecamatan = $kioskUsers->pluck('KecamatanId', 'Email')->all();
+        $kioskName      = $kioskUsers->pluck('KioskName', 'Email')->all();
 
+        // Tarif per (region|kecamatan_id) — kecamatan_id kosong berarti tarif
+        // default region, dipakai lewat TransportPartnerRate::lookupFromMap().
         $regions = array_unique(array_filter(array_values($kioskRegion)));
-        $rates   = TransportPartnerRate::where('company_name', $company)
-            ->whereIn('region', $regions)
-            ->pluck('shipping_cost_per_kg', 'region')
-            ->all();
+        $rateMap = TransportPartnerRate::rateMapFor($company, $regions);
 
         $orderMap = $orders->keyBy('Id');
 
-        $driverRows = $shipments->groupBy('DriverName')->map(function ($slots, $driverName) use ($orderMap, $kioskRegion, $kioskName, $rates) {
+        $driverRows = $shipments->groupBy('DriverName')->map(function ($slots, $driverName) use ($orderMap, $kioskRegion, $kioskKecamatan, $kioskName, $rateMap) {
             $rows        = [];
             $driverTotal = 0.0;
 
             foreach ($slots as $s) {
-                $order  = $orderMap->get($s->OrderId);
-                $region = $order ? ($kioskRegion[$order->UserEmail] ?? null) : null;
-                $rate   = $region ? ($rates[$region] ?? null) : null;
-                $cost   = $rate !== null ? (float) $s->QuotaTon * 1000 * (float) $rate : null;
+                $order       = $orderMap->get($s->OrderId);
+                $region      = $order ? ($kioskRegion[$order->UserEmail] ?? null) : null;
+                $kecamatanId = $order ? ($kioskKecamatan[$order->UserEmail] ?? null) : null;
+                $rate        = TransportPartnerRate::lookupFromMap($rateMap, $region, $kecamatanId);
+                $cost        = $rate !== null ? (float) $s->QuotaTon * 1000 * $rate : null;
                 if ($cost !== null) {
                     $driverTotal += $cost;
                 }
