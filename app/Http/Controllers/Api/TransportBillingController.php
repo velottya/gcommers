@@ -237,7 +237,7 @@ class TransportBillingController extends Controller
             = $this->buildBillingDetail($billing);
 
         $pdf = Pdf::loadView('transport-billing', compact('billing', 'orderList', 'driverRows', 'periodLabel'))
-            ->setPaper('a4', 'portrait');
+            ->setPaper('a4', 'landscape');
 
         $slug = preg_replace('/[^A-Za-z0-9\-]/', '-', $billing->company_name);
         return $pdf->download("Tagihan-{$slug}-{$billing->period}.pdf");
