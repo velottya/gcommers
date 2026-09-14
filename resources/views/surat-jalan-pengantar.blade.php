@@ -14,6 +14,7 @@
     .letterhead-table { width: 100%; border-collapse: collapse; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 6px; }
     .letterhead-table td { vertical-align: top; padding-bottom: 10px; }
     .letterhead-table img { width: 52px; height: 52px; }
+    .letterhead-table .company-cell { padding-left: 16px; }
     .company-name { font-size: 15px; font-weight: bold; letter-spacing: 0.02em; }
     .company-addr { font-size: 10px; margin-top: 1px; }
     .company-phone { font-size: 10px; margin-top: 1px; text-decoration: underline; }
@@ -62,7 +63,7 @@
     <table class="letterhead-table">
         <tr>
             <td style="width:52px;"><img src="{{ public_path('logo.png') }}" alt="Logo" /></td>
-            <td>
+            <td class="company-cell">
                 <div class="company-name">PT. GRESIK CIPTA SEJAHTERA</div>
                 <div class="company-addr">Jl. KIG Raya Selatan Blok A5 - Gresik</div>
                 <div class="company-phone">Telp. (031) 3985543, 3984822, 3973239</div>

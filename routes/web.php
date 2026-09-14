@@ -90,8 +90,10 @@ Route::middleware('auth.admin')->prefix('api/admin')->group(function () {
     Route::post('/cost-rates/{id}/review',  [CostRateController::class, 'review']);
 
     // Tarif Mitra Transportir (AdminRegion, referensi langsung tanpa approval)
-    Route::get('/transport-partner-rates',  [TransportPartnerRateController::class, 'index']);
-    Route::post('/transport-partner-rates', [TransportPartnerRateController::class, 'store']);
+    Route::get('/transport-partner-rates',            [TransportPartnerRateController::class, 'index']);
+    Route::post('/transport-partner-rates',            [TransportPartnerRateController::class, 'store']);
+    Route::get('/transport-partner-rates/kecamatan',   [TransportPartnerRateController::class, 'kecamatanRates']);
+    Route::post('/transport-partner-rates/kecamatan',  [TransportPartnerRateController::class, 'saveKecamatanRates']);
 
     // Alokasi Quota Subsidi (AdminRegion + SuperAdmin, with approval workflow)
     Route::get('/quota-subsidi/kecamatan',    [SubsidyQuotaController::class, 'kecamatanList']);

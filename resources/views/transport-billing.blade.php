@@ -5,28 +5,24 @@
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10.5px; color: #111; background: #fff; }
-    .page { padding: 28px 36px; }
+    .page { padding: 22px 40px; }
 
-    /* Letterhead */
-    .lh { width: 100%; border-collapse: collapse; border-bottom: 2.5px solid #0f766e; margin-bottom: 10px; padding-bottom: 10px; }
-    .lh td { vertical-align: middle; }
-    .brand { font-size: 17px; font-weight: bold; letter-spacing: 0.04em; color: #0f766e; }
-    .brand-sub { font-size: 9px; color: #666; margin-top: 2px; }
+    /* Letterhead — sama seperti surat-jalan-pengantar / BPTP */
+    .letterhead-table { width: 100%; border-collapse: collapse; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
+    .letterhead-table td { vertical-align: top; padding-bottom: 10px; }
+    .letterhead-table img { width: 52px; height: 52px; }
+    .letterhead-table .company-cell { padding-left: 16px; }
+    .company-name { font-size: 15px; font-weight: bold; letter-spacing: 0.02em; }
+    .company-addr { font-size: 10px; margin-top: 1px; }
+    .company-phone { font-size: 10px; margin-top: 1px; text-decoration: underline; }
     .doc-ref { text-align: right; }
-    .doc-ref .tag-no { font-size: 12px; font-weight: bold; }
-    .doc-ref .tag-date { font-size: 9px; color: #777; margin-top: 2px; }
+    .doc-ref .tag-no { font-size: 14px; font-weight: bold; }
+    .doc-ref .tag-date { font-size: 9px; color: #555; margin-top: 2px; }
 
     /* Title */
-    .title-wrap { text-align: center; margin: 12px 0 10px; }
-    .title-wrap .doc-title { font-size: 13.5px; font-weight: bold; letter-spacing: 0.07em; text-transform: uppercase; text-decoration: underline; }
-    .title-wrap .doc-sub   { font-size: 9.5px; color: #666; margin-top: 3px; }
-
-    /* Status strip */
-    .status-strip { text-align: center; padding: 5px; margin-bottom: 12px; font-size: 10px; font-weight: bold; letter-spacing: 0.08em; border-radius: 3px; }
-    .s-approved  { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-    .s-submitted { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
-    .s-rejected  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .s-draft     { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .title-wrap { text-align: left; margin: 8px 0 14px; }
+    .title-wrap .doc-title { font-size: 14px; font-weight: bold; letter-spacing: 0.06em; text-transform: uppercase; text-decoration: underline; }
+    .title-wrap .doc-sub   { font-size: 9.5px; color: #555; margin-top: 3px; }
 
     /* Parties */
     .parties { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -76,12 +72,6 @@
     .grand-total .gt-label { font-size: 12px; font-weight: bold; }
     .grand-total .gt-value  { text-align: right; font-size: 14px; font-weight: bold; color: #0f766e; }
 
-    /* Review note */
-    .review-box { margin-top: 10px; padding: 8px 12px; border-radius: 4px; font-size: 9.5px; }
-    .review-approved { background: #f0fdf4; border: 1px solid #86efac; }
-    .review-rejected  { background: #fef2f2; border: 1px solid #fca5a5; }
-    .review-submitted { background: #fef9c3; border: 1px solid #fde047; }
-
     /* Signatures */
     .sign-t { width: 100%; border-collapse: collapse; margin-top: 28px; }
     .sign-t td { width: 50%; text-align: center; vertical-align: top; }
@@ -99,11 +89,13 @@
 <div class="page">
 
 {{-- ══ Letterhead ══ --}}
-<table class="lh">
+<table class="letterhead-table">
     <tr>
-        <td>
-            <div class="brand">GCOMMERS</div>
-            <div class="brand-sub">Sistem Manajemen Distribusi Pupuk Bersubsidi</div>
+        <td style="width:52px;"><img src="{{ public_path('logo.png') }}" alt="Logo" /></td>
+        <td class="company-cell">
+            <div class="company-name">PT. GRESIK CIPTA SEJAHTERA</div>
+            <div class="company-addr">Jl. KIG Raya Selatan Blok A5 - Gresik</div>
+            <div class="company-phone">Telp. (031) 3985543, 3984822, 3973239</div>
         </td>
         <td class="doc-ref">
             <div class="tag-no">No. TAG-{{ str_pad($billing->id, 5, '0', STR_PAD_LEFT) }}</div>
@@ -117,9 +109,6 @@
     <div class="doc-title">Tagihan Biaya Pengiriman</div>
     <div class="doc-sub">Periode {{ $periodLabel }}</div>
 </div>
-
-{{-- ══ Status strip ══ --}}
-<div class="status-strip s-approved">✓&nbsp;&nbsp;DISETUJUI</div>
 
 {{-- ══ Parties ══ --}}
 <table class="parties">
@@ -155,14 +144,10 @@
         <td class="sv">{{ $billing->reviewed_at ? \Carbon\Carbon::parse($billing->reviewed_at)->locale('id')->isoFormat('D MMMM YYYY') : '—' }}</td>
     </tr>
     @endif
+    @if($billing->note)
+    <tr><td class="sl">Catatan SuperAdmin</td><td class="sc">:</td><td class="sv">{{ $billing->note }}</td></tr>
+    @endif
 </table>
-
-@if($billing->note)
-<div class="review-box {{ $billing->status === 'approved' ? 'review-approved' : ($billing->status === 'rejected' ? 'review-rejected' : 'review-submitted') }}"
-     style="margin-top:8px;">
-    <strong>Catatan SuperAdmin:</strong> {{ $billing->note }}
-</div>
-@endif
 
 {{-- ══ Per-driver breakdown ══ --}}
 @if(count($driverRows) > 0)
